@@ -2,6 +2,6 @@
 
 ## Download data
 ```
-pip instal requests tqdm
+pip install requests tqdm
 python data.py
 ```
