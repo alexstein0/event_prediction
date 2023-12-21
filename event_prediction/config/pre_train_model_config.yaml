@@ -1,0 +1,23 @@
+# @package _global_
+# Configuration defaults
+# Settings are separated into case, attack analysis
+defaults:
+  - data: ibm_fraud_transaction
+  - wandb: none
+  - _self_
+  - override hydra/job_logging: custom
+
+base_dir: outputs
+hydra:
+  sweep:
+    dir: ${base_dir}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  run:
+    dir: ${base_dir}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: True
+
+seed: # Optional: Set initial seed
+name: default # A name for this run [will be used for the outputs folder]
+
+# debug implementation by running every loop just once:
+#dryrun: False
