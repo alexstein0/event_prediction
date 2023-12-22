@@ -8,6 +8,11 @@ log = logging.getLogger(__name__)
 
 def main_pretrain(cfg, setup=None) -> Dict:
     print("HELLO WORLD")
+    dataset = event_prediction.data_utils.get_data(cfg.data, cfg.data_dir)
+    tokenizer = event_prediction.get_tokenizer(cfg.tokenizer)
+    tokenizer.tokenize(dataset)
+    # model = # TODO
+
     return {}
 
 
