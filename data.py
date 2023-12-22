@@ -19,46 +19,6 @@ def get_repo_root(curr_dir=None):
     return get_repo_root(parent)
 
 
-def download(url, download_dir="data"):
-    filename = os.path.basename(url)
-    os.makedirs(download_dir, exist_ok=True)
-    filepath = os.path.join(download_dir, filename)
-    if not os.path.exists(filepath):
-        try:
-            response = requests.get(url, stream=True)
-            file_size = int(response.headers.get("Content-Length", 0))
-            # Initialize a downloader with a progress bar
-            downloader = tqdm(
-                response.iter_content(1024),
-                f"Downloading {url}",
-                total=file_size,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-            )
-            with open(filepath, "wb") as file:
-                for data in downloader.iterable:
-                    # Write data read to the file
-                    file.write(data)
-                    # Update the progress bar manually
-                    downloader.update(len(data))
-        except Exception as e:
-            print(f"Error: {e}")
-    return filepath
-
-
-def extract(filepath):
-    print(f"Checking {filepath} to extract files...")
-    dir = os.path.dirname(filepath)
-    extracted_files = []
-    with tarfile.open(filepath) as tar:
-        for member in tar.getmembers():
-            if not os.path.isfile(os.path.join(dir, member.name)):
-                tar.extract(member, path=dir)
-            extracted_files.append(member.name)
-    print(f"Extracted files: {extracted_files}")
-    return extracted_files
-
 
 if __name__ == "__main__":
     url = "https://obj.umiacs.umd.edu/eventprediction/transactions.tgz"

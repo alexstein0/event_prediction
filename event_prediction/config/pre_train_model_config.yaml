@@ -3,11 +3,14 @@
 # Settings are separated into case, attack analysis
 defaults:
   - data: ibm_fraud_transaction
+  - tokenizer: composite
   - wandb: none
   - _self_
   - override hydra/job_logging: custom
 
 base_dir: outputs
+data_dir: data
+
 hydra:
   sweep:
     dir: ${base_dir}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
