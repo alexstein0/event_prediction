@@ -1,6 +1,8 @@
 name: ibm_fraud_transaction
 
 url: "https://obj.umiacs.umd.edu/eventprediction/transactions.tgz"
-name: ibm_fraud_transaction
 
-url: "https://obj.umiacs.umd.edu/eventprediction/transactions.tgz"
+train_test_split_year: 2018
+sample_size: 10
+consider_card: False
+
