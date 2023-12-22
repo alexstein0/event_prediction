@@ -1,6 +1,7 @@
 import os
 import tarfile
 
+import pandas as pd
 import requests
 from tqdm import tqdm
 
@@ -18,6 +19,13 @@ def get_repo_root(curr_dir=None):
     # Recursively call the function on the next level up
     return get_repo_root(parent)
 
+
+
+def get_timestamps(X):
+    """Return a pd.Series of datetime objects created from a dataframe with columns 'Year', 'Month', 'Day', 'Time'"""
+    X_hm = X['Time'].str.split(':', expand=True)  # Expect "Time" to be in the format "HH:MM"
+    d = pd.to_datetime(dict(year=X['Year'], month=X['Month'], day=X['Day'], hour=X_hm[0], minute=X_hm[1]))
+    return d
 
 
 if __name__ == "__main__":
