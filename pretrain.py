@@ -11,7 +11,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
     data = event_prediction.data_utils.get_data(cfg.data, cfg.data_dir)
     dataset = event_prediction.data_utils.prepare_dataset(cfg.data, data)
     tokenizer = event_prediction.get_tokenizer(cfg.tokenizer)
-    tokenizer.tokenize(dataset)
+    tokens = tokenizer.tokenize(dataset)
     # model = # TODO
 
     return {}
