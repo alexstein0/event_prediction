@@ -2,6 +2,6 @@
 
 ## Download data
 ```
-pip install requests tqdm
-python data.py
+pip install -r requirements.txt
+python pretrain.py
 ```
