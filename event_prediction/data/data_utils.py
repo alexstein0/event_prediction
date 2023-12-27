@@ -8,26 +8,32 @@ import numpy as np
 import pandas as pd
 import requests
 from hydra.utils import get_original_cwd
-from torch.utils.data import Dataset
 from tqdm import tqdm
 
 log = logging.getLogger(__name__)
 
+def load_dataset(cfg, data_dir_name):
+    #TODO
+    pass
 
-def get_data(cfg, data_dir_name="data"):
-    data_dir = os.path.join(get_original_cwd(), data_dir_name)
-    os.makedirs(data_dir, exist_ok=True)
-
+def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
+    data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
     file_path = os.path.join(data_dir, cfg.name)
     try:
         data = get_data_from_file(file_path)
     except:
-        download_and_save_data_from_url(cfg.url, file_path)
+        os.makedirs(data_dir, exist_ok=True)
+        # TODO make it so you dont need to download and save, but can download direct to memory
+        data = download_data_from_url(cfg.url, file_path)
+        # data = pd.read_csv(io.BytesIO(data))
+        # if cfg.save_raw_data:
+        #     save_raw_data(data, file_path)
         data = get_data_from_file(file_path)
+
     return data
 
 
-def download_and_save_data_from_url(url: str, filepath: str) -> str:
+def download_data_from_url(url: str, filepath: str):
     try:
         response = requests.get(url, stream=True)
         file_size = int(response.headers.get("Content-Length", 0))
@@ -40,6 +46,7 @@ def download_and_save_data_from_url(url: str, filepath: str) -> str:
             unit_scale=True,
             unit_divisor=1024,
         )
+
         with open(filepath, "wb") as file:
             for data in downloader.iterable:
                 # Write data read to the file
@@ -47,22 +54,48 @@ def download_and_save_data_from_url(url: str, filepath: str) -> str:
                 # Update the progress bar manually
                 downloader.update(len(data))
             log.info(f"Dataset saved to {filepath}")
-
     except Exception as e:
         log.error(f"Error: {e}")
     return filepath
 
 
-def get_data_from_file(filepath: str):
-    log.info(f"Checking {filepath} to load data...")
+def save_raw_data(data, filepath):
+    with open(filepath, "wb") as file:
+        for d in data:
+            # Write data read to the file
+            file.write(d)
+        log.info(f"Dataset saved to {filepath}")
 
+
+def get_data_from_binary(filepath: str):
     with tarfile.open(filepath, "r:gz") as tar:
         for member in tar.getmembers():
             f = tar.extractfile(member)
             if f is not None:
                 content = f.read()
-        log.info(f"Data load complete")
-        return content
+    return content
+
+def get_data_from_file(filepath: str) -> pd.DataFrame:
+    log.info(f"Checking {filepath} to load data...")
+    try:
+        # read csv
+        data = pd.read_csv(f"{filepath}.csv")
+    except:
+        try:
+            # read binary file
+            with tarfile.open(filepath, "r:gz") as tar:
+                for member in tar.getmembers():
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        data = f.read()
+                        data = pd.read_csv(io.BytesIO(data))
+                        break
+        except:
+            raise ValueError(
+                f"input must be filename of type byte or csv"
+            )
+    log.info(f"Data load complete")
+    return data
 
 
 def get_timestamps(X: pd.DataFrame) -> pd.Series:
@@ -97,12 +130,11 @@ def convert_dollars_to_floats(X: pd.DataFrame, log_scale: bool = True) -> pd.Dat
         X["Amount"] = np.log(X["Amount"])
     return X
 
-
-def do_basic_preprocessing(
-    X: pd.DataFrame, consider_card: bool = False
-) -> pd.DataFrame:
+def do_basic_preprocessing(X: pd.DataFrame, consider_card: bool = False) -> pd.DataFrame:
+    # todo is it faster to process each row or to try it this way?
     """Return a preprocessed dataframe"""
     X = add_hours_total_minutes(X)
+    X = convert_dollars_to_floats(X, log_scale=True)
     sort_columns = (
         ["User", "Card", "total_minutes"]
         if consider_card
@@ -111,13 +143,10 @@ def do_basic_preprocessing(
     X = X.sort_values(by=sort_columns)
     # Add a column numbering the transactions in order
     X["rownumber"] = np.arange(len(X))
-    X = convert_dollars_to_floats(X, log_scale=True)
     return X
 
 
-def get_train_test_split(
-    X: pd.DataFrame, split_year: int = 2018
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Return a train-test split of the data based on a single year cutoff"""
     train = X.loc[X["Year"] < split_year]
     test = X.loc[X["Year"] >= split_year]
@@ -134,11 +163,11 @@ def get_users(trainset: pd.DataFrame, testset: pd.DataFrame) -> Tuple[set, set]:
 
 
 def add_train_transacations_to_testset(
-    trainset: pd.DataFrame,
-    testset: pd.DataFrame,
-    train_test_users: set,
-    sample_size: int = 10,
-    consider_card: bool = False,
+        trainset: pd.DataFrame,
+        testset: pd.DataFrame,
+        train_test_users: set,
+        sample_size: int = 10,
+        consider_card: bool = False,
 ) -> pd.DataFrame:
     """
     Add a sampling of transactions from the trainset for each trainset user that also
@@ -151,12 +180,12 @@ def add_train_transacations_to_testset(
         else ["User", "total_minutes"]
     )
     # Get the indices of the last y-1 transactions for each user in dataframe x
-    get_sample_indices = lambda x, y: x.index[-(y - 1) :]
+    get_sample_indices = lambda x, y: x.index[-(y - 1):]
 
     test_extra_indices = (
         trainset.loc[trainset["User"].isin(train_test_users)]
-        .groupby(groupby_columns)
-        .apply(get_sample_indices, sample_size)
+            .groupby(groupby_columns)
+            .apply(get_sample_indices, sample_size)
     )
     test_extra_indices = test_extra_indices.explode()
     testset = pd.concat([trainset.loc[test_extra_indices], testset])
@@ -165,10 +194,10 @@ def add_train_transacations_to_testset(
 
 
 def add_static_user_fields(
-    trainset: pd.DataFrame,
-    testset: pd.DataFrame,
-    test_only_users: set,
-    consider_card: bool = False,
+        trainset: pd.DataFrame,
+        testset: pd.DataFrame,
+        test_only_users: set,
+        consider_card: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Add "static field" columns to the dataset. This is aggregate data that is added
@@ -243,35 +272,34 @@ def add_static_user_fields(
     return trainset, testset
 
 
-def prepare_dataset(cfg, csv_data: Union[bytes, str] = None):
+def prepare_dataset(cfg, data: pd.DataFrame) -> pd.DataFrame:
     """
     Return a preprocessed train-test split of the data.
     """
-    if isinstance(csv_data, bytes):
-        data = pd.read_csv(io.BytesIO(csv_data))
-    elif isinstance(csv_data, str):
-        data = pd.read_csv(csv_data)
-    else:
-        raise ValueError(
-            f"csv_data must be bytes or filename, instead got {type(csv_data)}"
-        )
 
-    log.info("Doing basic preprocessing...")
     data = do_basic_preprocessing(data, cfg.consider_card)
 
-    log.info("Splitting into train and test sets...")
-    trainset, testset = get_train_test_split(data, cfg.train_test_split_year)
+    # log.info("Splitting into train and test sets...")
+    # trainset, testset = get_train_test_split(data, cfg.train_test_split_year)
 
     # Monte note: I don't know why we're doing this. Isn't this bad practice?
-    log.info("Adding train transactions to test set...")
-    train_test_users, test_only_users = get_users(trainset, testset)
-    testset = add_train_transacations_to_testset(
-        trainset, testset, train_test_users, cfg.sample_size, cfg.consider_card
-    )
+    # log.info("Adding train transactions to test set...")
+    # train_test_users, test_only_users = get_users(trainset, testset)
+    # testset = add_train_transacations_to_testset(
+    #     trainset, testset, train_test_users, cfg.sample_size, cfg.consider_card
+    # )
+    # log.info("Adding static user fields...")
+    # trainset, testset = add_static_user_fields(
+    #     trainset, testset, test_only_users, cfg.consider_card
+    # )
 
-    log.info("Adding static user fields...")
-    trainset, testset = add_static_user_fields(
-        trainset, testset, test_only_users, cfg.consider_card
-    )
+    return data
 
-    return trainset, testset
+def save_processed_dataset(dataset: pd.DataFrame, cfg, raw_data_dir_name="data"):
+    data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
+    filepath = os.path.join(data_dir, cfg.name)
+    os.makedirs(data_dir, exist_ok=True)
+    filepath = f"{filepath}.csv"
+    dataset.to_csv(f"{filepath}")
+    return filepath
+

@@ -1,5 +1,6 @@
 .venv
 /data/
+/data_raw/
 logs
 
 .DS_Store
