@@ -1,18 +1,12 @@
 """Initialize event_predictions"""
 
 from event_prediction import utils
-from event_prediction.data import data_utils
-from event_prediction.tokenizers import Composite, Atomic
+from event_prediction.data import data_utils, get_data_processor
+from event_prediction.tokenizers import get_tokenizer
 
 __all__ = [
     "utils",
-    "data_utils"
+    "data_utils",
+    "get_data_processor",
+    "get_tokenizer"
 ]
-
-def get_tokenizer(tokenizer_cfg):
-    if tokenizer_cfg.name == "composite":
-        return Composite()
-    elif tokenizer_cfg.name == "atomic":
-        return Atomic()
-    else:
-        return None

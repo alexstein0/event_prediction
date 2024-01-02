@@ -122,99 +122,88 @@ def get_data_from_file(filepath: str) -> pd.DataFrame:
     return data
 
 
-def get_timestamps(X: pd.DataFrame) -> pd.Series:
+def get_timestamps(X: pd.DataFrame,
+                   year_col: str="Year",
+                   month_col: str="Month",
+                   day_col: str="Day",
+                   time_col: str="Time") -> pd.Series:
     """Return a pd.Series of datetime objects created from a dataframe with columns 'Year', 'Month', 'Day', 'Time'"""
-    X_hm = X["Time"].str.split(
+    X_hm = X[time_col].str.split(
         ":", expand=True
     )  # Expect "Time" to be in the format "HH:MM"
     d = pd.to_datetime(
         dict(
-            year=X["Year"], month=X["Month"], day=X["Day"], hour=X_hm[0], minute=X_hm[1]
+            year=X[year_col], month=X[month_col], day=X[day_col], hour=X_hm[0], minute=X_hm[1]
         )
     )
     return d
 
 
-def add_hours_total_minutes(X: pd.DataFrame) -> pd.DataFrame:
+def add_hours_total_minutes(X: pd.DataFrame, output_column: str="total_minutes") -> pd.DataFrame:
     """Return a dataframe with new columns 'Hour' and 'total_minutes'"""
     timestamps = get_timestamps(X)
     X["Hour"] = timestamps.dt.hour
-    # Add a column for total minutes from timestamp=0 to our datafrae
+    # Add a column for total minutes from timestamp=0 to our dataframe
     zero_time = pd.to_datetime(np.zeros(len(X)))
     total_seconds = (timestamps - zero_time).dt.total_seconds().astype(int)
     total_minutes = total_seconds // 60
-    X["total_minutes"] = total_minutes
+    X[output_column] = total_minutes
     return X
 
 
-def convert_dollars_to_floats(X: pd.DataFrame, log_scale: bool = True) -> pd.DataFrame:
+def convert_dollars_to_floats(X: pd.DataFrame, col_name: str, log_scale: bool = True) -> pd.DataFrame:
     """Return a dataframe with the 'Amount' column converted to floats"""
-    X["Amount"] = X["Amount"].str.replace("$", "").astype(float)
+    X[col_name] = X[col_name].str.replace("$", "").astype(float)
     if log_scale:
-        X["Amount"] = np.log(X["Amount"])
-    return X
-
-def do_basic_preprocessing(X: pd.DataFrame, consider_card: bool = False) -> pd.DataFrame:
-    # todo is it faster to process each row or to try it this way?
-    """Return a preprocessed dataframe"""
-    X = add_hours_total_minutes(X)
-    X = convert_dollars_to_floats(X, log_scale=True)
-    sort_columns = (
-        ["User", "Card", "total_minutes"]
-        if consider_card
-        else ["User", "total_minutes"]
-    )
-    X = X.sort_values(by=sort_columns)
-    # Add a column numbering the transactions in order
-    X["rownumber"] = np.arange(len(X))
+        X[col_name] = np.log(X[col_name])
     return X
 
 
-def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Return a train-test split of the data based on a single year cutoff"""
-    train = X.loc[X["Year"] < split_year]
-    test = X.loc[X["Year"] >= split_year]
-    return train, test
+# def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#     """Return a train-test split of the data based on a single year cutoff"""
+#     train = X.loc[X["Year"] < split_year]
+#     test = X.loc[X["Year"] >= split_year]
+#     return train, test
 
 
-def get_users(trainset: pd.DataFrame, testset: pd.DataFrame) -> Tuple[set, set]:
+def get_users(trainset: pd.DataFrame, testset: pd.DataFrame, user_col: str="User") -> Tuple[set, set]:
     """Return a list of users in both train and test sets, and users in both."""
-    train_users = set(trainset["User"].unique())
-    test_users = set(testset["User"].unique())
+    train_users = set(trainset[user_col].unique())
+    test_users = set(testset[user_col].unique())
     train_test_users = train_users.intersection(test_users)
     test_only_users = test_users.difference(train_users)
     return train_test_users, test_only_users
 
-
-def add_train_transacations_to_testset(
-        trainset: pd.DataFrame,
-        testset: pd.DataFrame,
-        train_test_users: set,
-        sample_size: int = 10,
-        consider_card: bool = False,
-) -> pd.DataFrame:
-    """
-    Add a sampling of transactions from the trainset for each trainset user that also
-    appears in the testset.
-    """
-    groupby_columns = ["User", "Card"] if consider_card else ["User"]
-    sort_columns = (
-        ["User", "Card", "total_minutes"]
-        if consider_card
-        else ["User", "total_minutes"]
-    )
-    # Get the indices of the last y-1 transactions for each user in dataframe x
-    get_sample_indices = lambda x, y: x.index[-(y - 1):]
-
-    test_extra_indices = (
-        trainset.loc[trainset["User"].isin(train_test_users)]
-            .groupby(groupby_columns)
-            .apply(get_sample_indices, sample_size)
-    )
-    test_extra_indices = test_extra_indices.explode()
-    testset = pd.concat([trainset.loc[test_extra_indices], testset])
-    testset.sort_values(by=sort_columns, inplace=True)
-    return testset
+#
+# def add_train_transacations_to_testset(
+#         trainset: pd.DataFrame,
+#         testset: pd.DataFrame,
+#         train_test_users: set,
+#         sample_size: int = 10,
+#         consider_card: bool = False,
+# ) -> pd.DataFrame:
+#     """
+#     Add a sampling of transactions from the trainset for each trainset user that also
+#     appears in the testset.
+#     """
+#     groupby_columns = ["User", "Card"] if consider_card else ["User"]
+#     sort_columns = (
+#         ["User", "Card", "total_minutes"]
+#         if consider_card
+#         else ["User", "total_minutes"]
+#     )
+#     # Get the indices of the last y-1 transactions for each user in dataframe x
+#     get_sample_indices = lambda x, y: x.index[-(y - 1):]
+#
+#     test_extra_indices = (
+#         trainset.loc[trainset["User"].isin(train_test_users)]
+#             .groupby(groupby_columns)
+#             .apply(get_sample_indices, sample_size)
+#     )
+#     test_extra_indices = test_extra_indices.explode()
+#     testset = pd.concat([trainset.loc[test_extra_indices], testset])
+#     testset.sort_values(by=sort_columns, inplace=True)
+#     return testset
 
 
 def add_static_user_fields(
@@ -295,29 +284,29 @@ def add_static_user_fields(
 
     return trainset, testset
 
-
-def prepare_dataset(cfg, data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Return a preprocessed train-test split of the data.
-    """
-
-    data = do_basic_preprocessing(data, cfg.consider_card)
-
-    # log.info("Splitting into train and test sets...")
-    # trainset, testset = get_train_test_split(data, cfg.train_test_split_year)
-
-    # Monte note: I don't know why we're doing this. Isn't this bad practice?
-    # log.info("Adding train transactions to test set...")
-    # train_test_users, test_only_users = get_users(trainset, testset)
-    # testset = add_train_transacations_to_testset(
-    #     trainset, testset, train_test_users, cfg.sample_size, cfg.consider_card
-    # )
-    # log.info("Adding static user fields...")
-    # trainset, testset = add_static_user_fields(
-    #     trainset, testset, test_only_users, cfg.consider_card
-    # )
-
-    return data
+#
+# def prepare_dataset(cfg, data: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     Return a preprocessed train-test split of the data.
+#     """
+#
+#     data = do_basic_preprocessing(data, cfg.consider_card)
+#
+#     # log.info("Splitting into train and test sets...")
+#     # trainset, testset = get_train_test_split(data, cfg.train_test_split_year)
+#
+#     # Monte note: I don't know why we're doing this. Isn't this bad practice?
+#     # log.info("Adding train transactions to test set...")
+#     # train_test_users, test_only_users = get_users(trainset, testset)
+#     # testset = add_train_transacations_to_testset(
+#     #     trainset, testset, train_test_users, cfg.sample_size, cfg.consider_card
+#     # )
+#     # log.info("Adding static user fields...")
+#     # trainset, testset = add_static_user_fields(
+#     #     trainset, testset, test_only_users, cfg.consider_card
+#     # )
+#
+#     return data
 
 def save_processed_dataset(dataset: pd.DataFrame, cfg, raw_data_dir_name="data"):
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
