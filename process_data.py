@@ -11,9 +11,15 @@ def main_process_data(cfg, setup=None) -> Dict:
     log.info("Doing basic preprocessing...")
     dataset = data_utils.prepare_dataset(cfg.data, data)
     print(dataset.columns)
-    # TODO can probably tensorize and tokenize here on single dataset
+
+    # TODO
     tokenizer = event_prediction.get_tokenizer(cfg.tokenizer)  # todo pretrain tokenize
+    # normalize
+    # pre-process
     tokenizer.create_elementary_tokens(dataset, cfg.data)
+    # model
+    # post-process
+    # save
 
     log.info("Saving File")
     filepath = data_utils.save_processed_dataset(dataset, cfg.data, cfg.processed_data_dir)
@@ -24,7 +30,7 @@ def main_process_data(cfg, setup=None) -> Dict:
 
 @hydra.main(config_path="event_prediction/config", config_name="pre_process_data", version_base="1.3")
 def launch(cfg):
-    event_prediction.utils.main_launcher(cfg, main_process_data, job_name="pre-train")
+    event_prediction.utils.main_launcher(cfg, main_process_data, job_name="process-data")
 
 
 if __name__ == "__main__":

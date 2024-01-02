@@ -18,7 +18,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
 
 @hydra.main(config_path="event_prediction/config", config_name="process_data_config", version_base="1.3")
 def launch(cfg):
-    event_prediction.utils.main_launcher(cfg, main_pretrain, job_name="process-data")
+    event_prediction.utils.main_launcher(cfg, main_pretrain, job_name="pre-train")
 
 
 if __name__ == "__main__":
