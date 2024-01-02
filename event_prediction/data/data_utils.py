@@ -3,6 +3,7 @@ import logging
 import os
 import tarfile
 from typing import Tuple, Union
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
@@ -16,55 +17,78 @@ def load_dataset(cfg, data_dir_name):
     #TODO
     pass
 
-def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
+def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
+    """
+    Return a dataframe of the dataset specified in the config. For a given dataset
+    first we will look for it on disk, and if it is not there we will download it.
+    """
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
-    file_path = os.path.join(data_dir, cfg.name + ".tgz")
+    _, ext = os.path.splitext(urlparse(cfg.url).path)
+    file_path = os.path.join(data_dir, cfg.name)
     try:
+        # If we have the data on disk, load it
         data = get_data_from_file(file_path)
     except:
         os.makedirs(data_dir, exist_ok=True)
-        # TODO make it so you dont need to download and save, but can download direct to memory
-        file_path = download_data_from_url(cfg.url, file_path)
-        # data = pd.read_csv(io.BytesIO(data))
-        # if cfg.save_raw_data:
-        #     save_raw_data(data, file_path)
-        data = get_data_from_file(file_path)
-
+        data = download_data_from_url(cfg.url)
+        if save_tar_to_disk:
+            save_raw_data(data, f"{file_path}.tgz")
+        if ext == ".tgz":
+            data = extract(data)
+        # pd.read_csv can take a filename or a file-like object, so we can directly pass our BytesIO data object.
+        data = pd.read_csv(data)
+        if save_csv_to_disk:
+            data.to_csv(f"{file_path}.csv")
     return data
 
 
-def download_data_from_url(url: str, filepath: str):
+def extract(data: io.BytesIO) -> io.BytesIO:
+    """Extract a tar.gz file to memory"""
+    log.info(f"Extracting tar.gz file...")
+    with tarfile.open(fileobj=data, mode='r:gz') as tar:
+        for member in tar.getmembers():
+            f = tar.extractfile(member)
+            if f is not None:
+                data = f.read()
+    return io.BytesIO(data)
+
+
+def download_data_from_url(url: str) -> io.BytesIO:
     try:
         response = requests.get(url, stream=True)
         file_size = int(response.headers.get("Content-Length", 0))
         # Initialize a downloader with a progress bar
-        downloader = tqdm(
-            response.iter_content(1024),
-            f"Downloading {url}",
+        downloader = TqdmToLogger(
+            log,
+            iterable=response.iter_content(1024),
+            desc=f"Downloading {url}",
             total=file_size,
             unit="B",
             unit_scale=True,
             unit_divisor=1024,
         )
 
-        with open(filepath, "wb") as file:
-            for data in downloader.iterable:
-                # Write data read to the file
-                file.write(data)
-                # Update the progress bar manually
-                downloader.update(len(data))
-            log.info(f"Dataset saved to {filepath}")
+        data = io.BytesIO()
+        for chunk in downloader.iterable:
+            data.write(chunk)
+            # Update the progress bar manually
+            downloader.update(len(chunk))
+
+        # Reset the file object position to the start of the stream
+        data.seek(0)
+
     except Exception as e:
         log.error(f"Error: {e}")
-    return filepath
+    return data
 
 
 def save_raw_data(data, filepath):
-    with open(filepath, "wb") as file:
-        for d in data:
-            # Write data read to the file
-            file.write(d)
-        log.info(f"Dataset saved to {filepath}")
+    log.info(f"Saving to {filepath}")
+    with open(filepath, "wb") as f:
+        for byte in data:
+            f.write(byte)
+    # Reset the file object position to the start of the stream
+    data.seek(0)
 
 
 def get_data_from_binary(filepath: str):
@@ -303,3 +327,18 @@ def save_processed_dataset(dataset: pd.DataFrame, cfg, raw_data_dir_name="data")
     dataset.to_csv(f"{filepath}")
     return filepath
 
+
+class TqdmToLogger(tqdm):
+    """File-like object to redirect tqdm output to a logger."""
+    def __init__(self, logger, level=logging.INFO, *args, **kwargs):
+        self.logger = logger
+        self.level = level
+        super().__init__(*args, **kwargs)
+
+    def write(self, s):
+        # Only log if the message is not empty or just a newline
+        if s.rstrip() != '':
+            self.logger.log(self.level, s.rstrip())
+
+    def flush(self):
+        pass

@@ -8,9 +8,13 @@ defaults:
   - _self_
   - override hydra/job_logging: custom
 
+
 base_dir: outputs
 data_dir: data_raw
 processed_data_dir: data
+save_tar: False
+save_csv: False
+
 
 hydra:
   sweep:
