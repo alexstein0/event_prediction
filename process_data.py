@@ -4,19 +4,22 @@ from event_prediction import data_utils
 import logging
 from typing import Dict
 
-log = logging.getLogger(__name__)
 
 def main_process_data(cfg, setup=None) -> Dict:
     data = data_utils.get_data_from_raw(cfg.data, cfg.data_dir)
-    log.info("Doing basic preprocessing...")
-    dataset = data_utils.prepare_dataset(cfg.data, data)
-    print(dataset.columns)
 
-    # TODO
-    tokenizer = event_prediction.get_tokenizer(cfg.tokenizer)  # todo pretrain tokenize
+    # print(dataset.columns)
+
+    tokenizer = event_prediction.get_tokenizer(cfg.tokenizer, cfg.data)
     # normalize
+    data = tokenizer.normalize(data)
+    data = tokenizer.preprocess(data)
+    data = tokenizer.model(data)
+    data_normed = tokenizer.post_process(data)
+    data = tokenizer.save(data_normed)
+    tokenizer.save()
     # pre-process
-    tokenizer.create_elementary_tokens(dataset, cfg.data)
+    # tokenizer.create_elementary_tokens(dataset, cfg.data)
     # model
     # post-process
     # save

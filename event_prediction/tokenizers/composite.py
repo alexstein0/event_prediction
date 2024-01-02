@@ -3,8 +3,8 @@ import pandas as pd
 from typing import Tuple, Set
 
 class Composite(GenericTokenizer):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, tokenizer_cfgs, data_cfgs):
+        super().__init__(tokenizer_cfgs, data_cfgs)
         pass
 
     def create_elementary_tokens(self, df: pd.DataFrame):
@@ -32,4 +32,7 @@ class Composite(GenericTokenizer):
         trainset_tokens = self.concat_dataframe_cols(trainset)
         testset_tokens = self.concat_dataframe_cols(testset)
         return trainset_tokens, testset_tokens
+
+    def preprocess(self, dataset):
+        self.concat_dataframe_cols(dataset)
         

@@ -1,12 +1,14 @@
 name: ibm_fraud_transaction
 
+data_processor: ibm_fraud_transaction
+
 url: "https://obj.umiacs.umd.edu/eventprediction/transactions.tgz"
 
 train_test_split_year: 2018
 sample_size: 10
 consider_card: False
 
-cat_columns:
+categorical_columns:
   - "User"
   - "Card"
   - "Merchant Name"
@@ -15,7 +17,7 @@ cat_columns:
   - "Zip"
   - "Is Fraud?"
 
-round_columns:
+numeric_columns:
   - "Amount"
   - "Year"
   - "Month"
