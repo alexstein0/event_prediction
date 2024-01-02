@@ -6,7 +6,7 @@ from typing import Dict
 
 
 def main_process_data(cfg, setup=None) -> Dict:
-    data = data_utils.get_data_from_raw(cfg.data, cfg.data_dir)
+    data = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, cfg.save_tar, cfg.save_csv)
 
     # print(dataset.columns)
 
