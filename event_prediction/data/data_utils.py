@@ -18,13 +18,13 @@ def load_dataset(cfg, data_dir_name):
 
 def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
-    file_path = os.path.join(data_dir, cfg.name)
+    file_path = os.path.join(data_dir, cfg.name + ".tgz")
     try:
         data = get_data_from_file(file_path)
     except:
         os.makedirs(data_dir, exist_ok=True)
         # TODO make it so you dont need to download and save, but can download direct to memory
-        data = download_data_from_url(cfg.url, file_path)
+        file_path = download_data_from_url(cfg.url, file_path)
         # data = pd.read_csv(io.BytesIO(data))
         # if cfg.save_raw_data:
         #     save_raw_data(data, file_path)
