@@ -158,6 +158,19 @@ def convert_dollars_to_floats(X: pd.DataFrame, col_name: str, log_scale: bool = 
         X[col_name] = np.log(X[col_name])
     return X
 
+def bucket_numeric(df: pd.DataFrame, bucket_type: str, bucket_amount: int) -> pd.DataFrame:
+    # todo add bucketing
+    # should return just the categorical values as strings?
+    return df
+
+
+def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
+    # todo add other types of normalization
+    if normalize_type == "normal":
+        df = (df - df.mean(0)) / df.std(0)
+    else:
+        log.info("No normalization applied")
+    return df
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""

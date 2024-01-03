@@ -1,8 +1,6 @@
 from .generic_data_processor import GenericDataProcessor
 import pandas as pd
 from .data_utils import add_hours_total_minutes, convert_dollars_to_floats
-import numpy as np
-import torch
 
 class IbmFraudTransactionDataProcessor(GenericDataProcessor):
     def __init__(self, data_cfg):
@@ -19,10 +17,11 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
         )
         data = data.sort_values(by=sort_columns)
         # Add a column numbering the transactions in order
-        data["rownumber"] = np.arange(len(data))
-        #todo
-        # split into cat and numeric
-        # for numeric, bucket
-        #
+        # data["rownumber"] = np.arange(len(data))
+        data = self.convert_columns(data)
+
         return data
+
+    def pretokenize_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        pass
 

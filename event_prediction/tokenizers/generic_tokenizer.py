@@ -1,5 +1,6 @@
 import logging
 from event_prediction import data_utils, get_data_processor
+import torch
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class GenericTokenizer:
         dataset = self.data_processor.normalize_data(dataset)
         return dataset
 
-    def preprocess(self, dataset):
+    def pretokenize(self, dataset) -> torch.Tensor:
         """This is where the different tokenizers will convert the tables into 'sentences' of 'words'
         The words outputted from here can be:
             1. Composite tokens with goal of predicting next composite token
@@ -37,10 +38,13 @@ class GenericTokenizer:
         raise NotImplementedError()
 
 
-    def model(self, dataset):
+    def model(self, dataset: torch.Tensor) -> torch.Tensor:
         """Tokenization here consists of taking the previous 'sentences' and doing actual tokenization such as:
             1. BPE
-            2. Word Piece"""
+            2. Word Piece
+            3. Word Level
+            4. Unigram
+            """
         raise NotImplementedError()
 
     def post_process(self, dataset):

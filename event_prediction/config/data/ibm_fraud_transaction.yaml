@@ -15,7 +15,6 @@ categorical_columns:
   - "Merchant City"
   - "Merchant State"
   - "Zip"
-  - "Is Fraud?"
 
 numeric_columns:
   - "Amount"
@@ -25,3 +24,10 @@ numeric_columns:
   - "Hour"
   - "Time"
 
+binary_columns:
+  - "Is Fraud?"
+
+normalization_type: normal
+
+numeric_bucket_type: even
+numeric_bucket_amount: 10
