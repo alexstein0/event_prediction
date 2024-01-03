@@ -2,7 +2,7 @@ import io
 import logging
 import os
 import tarfile
-from typing import Tuple, Union
+from typing import Tuple, Union, List, Dict
 from urllib.parse import urlparse
 
 import numpy as np
@@ -11,11 +11,13 @@ import requests
 from hydra.utils import get_original_cwd
 from tqdm import tqdm
 
+import json
+
 log = logging.getLogger(__name__)
 
-def load_dataset(cfg, data_dir_name):
-    #TODO
-    pass
+def load_dataset(data_file_name: str, data_dir_name: str="data"):
+    data_dir = os.path.join(get_original_cwd(), data_dir_name, data_file_name)
+    return get_data_from_file(data_dir)
 
 def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
     """
@@ -32,7 +34,7 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
         os.makedirs(data_dir, exist_ok=True)
         data = download_data_from_url(cfg.url)
         if save_tar_to_disk:
-            save_raw_data(data, f"{file_path}.tgz")
+            save_raw_data(data, f"{file_path}.{ext}")
         if ext == ".tgz":
             data = extract(data)
         # pd.read_csv can take a filename or a file-like object, so we can directly pass our BytesIO data object.
@@ -99,7 +101,7 @@ def get_data_from_binary(filepath: str):
                 content = f.read()
     return content
 
-def get_data_from_file(filepath: str) -> pd.DataFrame:
+def get_data_from_file(filepath: str):
     log.info(f"Checking {filepath} to load data...")
     try:
         # read csv
@@ -107,7 +109,7 @@ def get_data_from_file(filepath: str) -> pd.DataFrame:
     except:
         try:
             # read binary file
-            with tarfile.open(filepath, "r:gz") as tar:
+            with tarfile.open(f"{filepath}.tgz", "r:gz") as tar:
                 for member in tar.getmembers():
                     f = tar.extractfile(member)
                     if f is not None:
@@ -115,9 +117,14 @@ def get_data_from_file(filepath: str) -> pd.DataFrame:
                         data = pd.read_csv(io.BytesIO(data))
                         break
         except:
-            raise ValueError(
-                f"input must be filename of type byte or csv"
-            )
+            try:
+                # read text file
+                with open(f"{filepath}.txt", "r:gz") as file:
+                    data = file.read()
+            except:
+                raise ValueError(
+                    f"input must be filename of type byte or csv"
+                )
     log.info(f"Data load complete")
     return data
 
@@ -150,6 +157,9 @@ def add_hours_total_minutes(X: pd.DataFrame, output_column: str="total_minutes")
     X[output_column] = total_minutes
     return X
 
+def add_minutes_from_last(X: pd.DataFrame, output_column: str="total_minutes"):
+    pass
+
 
 def convert_dollars_to_floats(X: pd.DataFrame, col_name: str, log_scale: bool = True) -> pd.DataFrame:
     """Return a dataframe with the 'Amount' column converted to floats"""
@@ -157,6 +167,7 @@ def convert_dollars_to_floats(X: pd.DataFrame, col_name: str, log_scale: bool = 
     if log_scale:
         X[col_name] = np.log(X[col_name])
     return X
+
 
 def bucket_numeric(df: pd.DataFrame, bucket_type: str, bucket_amount: int) -> pd.DataFrame:
     # todo add bucketing
@@ -171,6 +182,14 @@ def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
     else:
         log.info("No normalization applied")
     return df
+
+def concat_dataframe_cols(df: pd.DataFrame) -> List[str]:
+    result = []
+    for _, row in df.iterrows():
+        # row_string = '_'.join([f'{col}:{val}' for col, val in row.items()])
+        row_string = '_'.join([f'{val}' for col, val in row.items()])
+        result.append(row_string)
+    return result
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""
@@ -321,13 +340,29 @@ def add_static_user_fields(
 #
 #     return data
 
-def save_processed_dataset(dataset: pd.DataFrame, cfg, raw_data_dir_name="data"):
+def save_processed_dataset(dataset: List[str], cfg, raw_data_dir_name="data"):
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
     filepath = os.path.join(data_dir, cfg.name)
     os.makedirs(data_dir, exist_ok=True)
-    filepath = f"{filepath}.csv"
-    dataset.to_csv(f"{filepath}")
+    filepath = f"{filepath}.txt"
+    with open(filepath, "w") as file:
+        file.writelines(dataset)
     return filepath
+
+
+def save_json(data: Dict, file_dir: str, file_name: str) -> str:
+    file_dir = os.path.join(get_original_cwd(), file_dir)
+    filepath = os.path.join(file_dir, file_name)
+    os.makedirs(file_dir, exist_ok=True)
+
+    with open(filepath, "w") as outfile:
+        json.dump(data, outfile)
+    return filepath
+
+def read_json(file_dir: str, file_name: str) -> Dict:
+    filepath = os.path.join(get_original_cwd(), file_dir, file_name)
+    with open(filepath, "w") as file:
+        return json.load(file)
 
 
 class TqdmToLogger(tqdm):

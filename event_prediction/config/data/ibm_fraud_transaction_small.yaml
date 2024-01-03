@@ -8,24 +8,29 @@ train_test_split_year: 2018
 sample_size: 10
 consider_card: False
 
-categorical_columns:
+index_columns:
   - "User"
   - "Card"
+
+categorical_columns:
+  - "Use Chip"
   - "Merchant Name"
-  - "Merchant City"
-  - "Merchant State"
+#  - "Merchant City"
+#  - "Merchant State"
   - "Zip"
 
 numeric_columns:
   - "Amount"
-  - "Year"
-  - "Month"
-  - "Day"
+#  - "Year"
+#  - "Month"
+#  - "Day"
   - "Hour"
+  - "minutes_since_last"
 #  - "Time"
 
 binary_columns:
   - "Is Fraud?"
+  - "is_online"
 
 normalization_type: normal
 

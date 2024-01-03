@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 def main_pretrain(cfg, setup=None) -> Dict:
     print("HELLO WORLD")
     # dataset = event_prediction.data_utils.load_dataset(cfg.data, cfg.data_dir)
-    tokenizer, data = event_prediction.get_tokenizer_and_data(cfg.tokenizer)  # todo pretrain tokenize
+    tokenizer, dataset = event_prediction.get_tokenizer_and_data(cfg.tokenizer_dir, cfg.data_dir, cfg. tokenizer, cfg.data)  # todo pretrain tokenize
     tokens = tokenizer.tokenize(dataset)
     # model = # TODO
 

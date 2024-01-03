@@ -3,27 +3,21 @@ import pandas as pd
 from typing import Tuple, Set
 import torch
 
+from event_prediction import data_utils
+
 class Composite(GenericTokenizer):
     def __init__(self, tokenizer_cfgs, data_cfgs):
         super().__init__(tokenizer_cfgs, data_cfgs)
         pass
 
-    def concat_dataframe_cols(self, df: pd.DataFrame) -> set:
-        result = []
-        for _, row in df.iterrows():
-            # row_string = '_'.join([f'{col}:{val}' for col, val in row.items()])
-            row_string = '_'.join([f'{val}' for val in row.items()])
-            result.append(row_string)
-        return set(result)
+    def pretokenize(self, dataset):
+        all_tokens = data_utils.concat_dataframe_cols(dataset)
+        return all_tokens
 
-    def pretokenize(self, dataset) -> torch.Tensor:
-        all_tokens = self.concat_dataframe_cols(dataset)
-
-        return torch.Tensor(dataset.values)
-
-    def model(self, dataset: torch.Tensor) -> torch.Tensor:
+    def model(self, dataset):
         # todo check if this is right way to do composite? words are the concat of the whole sentence
         # this is effectively a "word level" tokenizer.  most of the work is done by the pretokenizer and this simply maps inputs to IDS
+        self.define_tokenization(dataset)
         return dataset
 
     # TODO:
@@ -38,6 +32,6 @@ class Composite(GenericTokenizer):
     #    sense of what they thought was useful.
     def tokenize(self, dataset: Tuple[pd.DataFrame, pd.DataFrame]) -> Tuple[Set, Set]:
         trainset, testset = dataset
-        trainset_tokens = self.concat_dataframe_cols(trainset)
-        testset_tokens = self.concat_dataframe_cols(testset)
+        trainset_tokens = data_utils.concat_dataframe_cols(trainset)
+        testset_tokens = data_utils.concat_dataframe_cols(testset)
         return trainset_tokens, testset_tokens

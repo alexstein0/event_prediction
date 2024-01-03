@@ -10,6 +10,8 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
         """Return a preprocessed dataframe"""
         data = add_hours_total_minutes(data)
         data = convert_dollars_to_floats(data, "Amount", log_scale=True)
+        # todo make sure zipcode is an int
+        # todo add column for is_online
         sort_columns = (
             ["User", "Card", "total_minutes"]
             if consider_card

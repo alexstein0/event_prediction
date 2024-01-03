@@ -1,31 +1,34 @@
 import logging
 from event_prediction import data_utils, get_data_processor
 import torch
+from typing import Set, List, Dict
 
 log = logging.getLogger(__name__)
 
 class GenericTokenizer:
     def __init__(self, tokenizer_cfgs, data_cfgs):
-        special_tokens_dict = {
+        self.special_tokens_dict = {
             'pad_token': '[PAD]',
             'bos_token': '[BOS]',
             'eos_token': '[EOS]',
+            'unk_token': '[UNK]',
         }
-        token_to_id_map = {}
-        id_to_token_map = {}
+        self.token_to_id = {}
+        self.id_to_token = {}
+        self.vocab = set()
         self.data_processor = get_data_processor(data_cfgs)
 
     def normalize(self, dataset):
         """Normalizes all the data in the table
         This includes:
-            1. bucketing numeric values if doing that (maybe thats preprocessing?)
+            1. bucketing numeric values if doing that (maybe preprocessing?)
             2. adding any new values to the table (such as converting dollars, adding total minutes, etc)
         """
         log.info("Normalizing Data...")
         dataset = self.data_processor.normalize_data(dataset)
         return dataset
 
-    def pretokenize(self, dataset) -> torch.Tensor:
+    def pretokenize(self, dataset):
         """This is where the different tokenizers will convert the tables into 'sentences' of 'words'
         The words outputted from here can be:
             1. Composite tokens with goal of predicting next composite token
@@ -38,7 +41,7 @@ class GenericTokenizer:
         raise NotImplementedError()
 
 
-    def model(self, dataset: torch.Tensor) -> torch.Tensor:
+    def model(self, dataset):
         """Tokenization here consists of taking the previous 'sentences' and doing actual tokenization such as:
             1. BPE
             2. Word Piece
@@ -48,11 +51,52 @@ class GenericTokenizer:
         raise NotImplementedError()
 
     def post_process(self, dataset):
-        raise NotImplementedError()
+        return dataset
+        # raise NotImplementedError()
 
-    def encode(self, dataset):
-        raise NotImplementedError()
+    def encode(self, data: List[str]) -> torch.Tensor:
+        if len(self.vocab) == 0:
+            raise ValueError("Must create token ids first")
+        output = torch.zeros(len(data))
+        for i in range(len(data)):
+            val = self.token_to_id.get(data[i], -1)  # todo (unknown tokens?)
+            output[i] = val
+        return output
 
-    def decode(self, dataset):
-        raise NotImplementedError()
+    def decode(self, data: torch.Tensor) -> List[str]:
+        if len(self.vocab) == 0:
+            raise ValueError("Must create token ids first")
+        output = []
+        for i in data:
+            val = self.id_to_token.get(i, self.special_tokens_dict['unk_token'])
+            output.append(val)
+        return output
+
+    def define_tokenization(self, dataset: Set[str]):
+        i = 0
+        for key, val in self.special_tokens_dict.items():
+            self.vocab.add(val)
+            self.id_to_token[i] = val
+            self.token_to_id[val] = i
+            i += 1
+
+        self.vocab.update(dataset)
+        for val in dataset:
+            self.id_to_token[i] = val
+            self.token_to_id[val] = i
+            i += 1
+
+    def save(self, file_name: str, tokenizer_dir: str):
+        output = {}
+        output["vocab"] = list(self.vocab)
+        output["id_to_token"] = self.id_to_token
+        output["token_to_id"] = self.token_to_id
+
+        path = data_utils.save_json(output, tokenizer_dir, f"{file_name}.json")
+        log.info(f"Saved tokenizer to {path}")
+
+    def load(self, data: Dict):
+        self.vocab = set(data["vocab"])
+        self.id_to_token = data["id_to_token"]
+        self.token_to_id = data["token_to_id"]
 

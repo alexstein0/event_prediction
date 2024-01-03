@@ -12,9 +12,9 @@ defaults:
 base_dir: outputs
 data_dir: data_raw
 processed_data_dir: data
+tokenizer_dir: tokenizer
 save_tar: False
 save_csv: False
-
 
 hydra:
   sweep:
