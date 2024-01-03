@@ -1,8 +1,9 @@
 import io
+import json
 import logging
 import os
 import tarfile
-from typing import Tuple, Union, List, Dict
+from typing import Dict, List, Tuple, Union
 from urllib.parse import urlparse
 
 import numpy as np
@@ -10,8 +11,6 @@ import pandas as pd
 import requests
 from hydra.utils import get_original_cwd
 from tqdm import tqdm
-
-import json
 
 log = logging.getLogger(__name__)
 
@@ -169,10 +168,25 @@ def convert_dollars_to_floats(X: pd.DataFrame, col_name: str, log_scale: bool = 
     return X
 
 
-def bucket_numeric(df: pd.DataFrame, bucket_type: str, bucket_amount: int) -> pd.DataFrame:
-    # todo add bucketing
-    # should return just the categorical values as strings?
-    return df
+def bucket_numeric(df: pd.DataFrame, bin_type: str, num_bins: int) -> pd.DataFrame:
+    """
+    Convert all numeric values to integers based on a specified number of bins.
+    "uniform" bins will be of equal size, "quantile" bins will have an equal number of
+    values in each bin.
+    """
+    assert bin_type in ["uniform", "quantile"], f"bin_type must be 'uniform' or 'quantile', not {bin_type}"
+
+    # Collect the bins so we can use them on incoming data later.
+    bins_dict = {}
+
+    for column in df.select_dtypes(include='number'):
+        if bin_type == "uniform":
+            df[column], bins = pd.cut(df[column], bins=num_bins, retbins=True, labels=False, duplicates='drop')
+        elif bin_type == "quantile":
+            df[column], bins = pd.qcut(df[column], q=num_bins, retbins=True, labels=False, duplicates='drop')
+        bins_dict[column] = bins
+
+    return df, bins_dict
 
 
 def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:

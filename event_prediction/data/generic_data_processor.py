@@ -8,6 +8,7 @@ class GenericDataProcessor:
         self.numeric_columns = data_cfg.numeric_columns
         self.binary_columns = data_cfg.binary_columns
         self.numeric_bucket_type = data_cfg.numeric_bucket_type
+        self.buckets = {}
         self.numeric_bucket_amount = data_cfg.numeric_bucket_amount
         self.normalization_type = data_cfg.normalization_type
 
@@ -33,10 +34,10 @@ class GenericDataProcessor:
             data[self.numeric_columns].replace(updated[self.numeric_columns])
 
         if self.numeric_bucket_type is not None:
-            updated = bucket_numeric(data[self.numeric_columns],
+            updated, buckets = bucket_numeric(data[self.numeric_columns],
                                      self.numeric_bucket_type,
                                      self.numeric_bucket_amount)
             data[self.numeric_columns].replace(updated[self.numeric_columns])
-
+            self.buckets = buckets
 
         return data
