@@ -39,7 +39,7 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
         # pd.read_csv can take a filename or a file-like object, so we can directly pass our BytesIO data object.
         data = pd.read_csv(data)
         if save_csv_to_disk:
-            data.to_csv(f"{file_path}.csv")
+            data.to_csv(f"{file_path}.csv", index=False)
     return data
 
 

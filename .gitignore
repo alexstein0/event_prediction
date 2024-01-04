@@ -1,4 +1,5 @@
 .venv
+.venv_nb
 /data/
 /data_raw/
 /tokenizer/
