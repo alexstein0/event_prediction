@@ -1,5 +1,6 @@
 import hydra
 import event_prediction
+from event_prediction import model_utils, trainer_utils
 import logging
 from typing import Dict
 
@@ -13,10 +14,10 @@ def main_pretrain(cfg, setup=None) -> Dict:
         cfg.tokenizer_dir, cfg.data_dir, cfg.tokenizer, cfg.data
     )  # todo pretrain tokenize
     tokens = tokenizer.tokenize(dataset)
-    model = event_prediction.model_utils.get_model(
+    model = model_utils.get_model(
         cfg.model, tokenizer, cfg.data.context_length
     )
-    trainer = event_prediction.trainer_utils.get_trainer(
+    trainer = trainer_utils.get_trainer(
         model=model,
         tokenizer=tokenizer,
         tokens=tokens,

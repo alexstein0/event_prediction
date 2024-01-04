@@ -2,11 +2,14 @@
 
 from event_prediction import utils
 from event_prediction.data import data_utils, get_data_processor
+from event_prediction.models import model_utils, trainer_utils
 from event_prediction.tokenizers import get_tokenizer, GenericTokenizer
 
 __all__ = [
     "utils",
     "data_utils",
+    "model_utils",
+    "trainer_utils",
     "get_data_processor",
     "get_tokenizer"
 ]
