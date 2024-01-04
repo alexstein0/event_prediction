@@ -1,15 +1,17 @@
 # @package _global_
-# Configuration defaults
-# Settings are separated into case, attack analysis
+
+# The other config files this relies on, specified in the format "<folder>: <file>[.yaml]"
 defaults:
-  - data: ibm_fraud_transaction
+  - data: ibm_fraud_transaction_small
   - tokenizer: composite
+  - model: gpt2
   - wandb: none
   - _self_
   - override hydra/job_logging: custom
 
 base_dir: outputs
 data_dir: data
+tokenizer_dir: tokenizer
 
 hydra:
   sweep:

@@ -385,9 +385,16 @@ def save_json(data: Dict, file_dir: str, file_name: str) -> str:
 
 def read_json(file_dir: str, file_name: str) -> Dict:
     filepath = os.path.join(get_original_cwd(), file_dir, file_name)
-    with open(filepath, "w") as file:
-        return json.load(file)
+    assert os.path.exists(filepath), f"File not found at {filepath}"
+    assert os.path.getsize(filepath) > 0, f"File is empty at {filepath}"
 
+    with open(filepath) as file:
+        try:
+            data = json.load(file)
+        except json.decoder.JSONDecodeError as e:
+            log.error(f"File {filepath} is not in JSON format: {e}")
+            raise e
+    return data
 
 class TqdmToLogger(tqdm):
     """File-like object to redirect tqdm output to a logger."""

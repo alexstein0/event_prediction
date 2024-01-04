@@ -13,6 +13,8 @@ class GenericTokenizer:
             'eos_token': '[EOS]',
             'unk_token': '[UNK]',
         }
+        self.bos_token_id = None
+        self.eos_token_id = None
         self.token_to_id = {}
         self.id_to_token = {}
         self.vocab = set()
@@ -86,6 +88,14 @@ class GenericTokenizer:
             self.token_to_id[val] = i
             i += 1
 
+        self.update_special_token_ids()
+
+
+    def update_special_token_ids(self):
+        self.bos_token_id = self.token_to_id[self.special_tokens_dict['bos_token']]
+        self.eos_token_id = self.token_to_id[self.special_tokens_dict['eos_token']]
+
+
     def save(self, file_name: str, tokenizer_dir: str):
         output = {}
         output["vocab"] = list(self.vocab)
@@ -95,8 +105,15 @@ class GenericTokenizer:
         path = data_utils.save_json(output, tokenizer_dir, f"{file_name}.json")
         log.info(f"Saved tokenizer to {path}")
 
+
     def load(self, data: Dict):
         self.vocab = set(data["vocab"])
         self.id_to_token = data["id_to_token"]
         self.token_to_id = data["token_to_id"]
+        self.update_special_token_ids()
+
+
+    def load_vocab_from_file(self, file_name: str, tokenizer_dir: str):
+        data = data_utils.read_json(tokenizer_dir, f"{file_name}.json")
+        self.load(data)
 
