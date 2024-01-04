@@ -13,12 +13,16 @@ class GenericTokenizer:
             'eos_token': '[EOS]',
             'unk_token': '[UNK]',
         }
-        self.bos_token_id = None
-        self.eos_token_id = None
         self.token_to_id = {}
         self.id_to_token = {}
         self.vocab = set()
         self.data_processor = get_data_processor(data_cfgs)
+
+        # Properties expected by huggingface Trainer
+        self.bos_token_id = None
+        self.eos_token_id = None
+        self.pad_token = self.special_tokens_dict['pad_token']
+
 
     def normalize(self, dataset):
         """Normalizes all the data in the table

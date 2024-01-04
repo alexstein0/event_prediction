@@ -6,9 +6,11 @@ import tarfile
 from typing import Dict, List, Tuple, Union
 from urllib.parse import urlparse
 
+import datasets
 import numpy as np
 import pandas as pd
 import requests
+from datasets import Dataset
 from hydra.utils import get_original_cwd
 from tqdm import tqdm
 
@@ -360,14 +362,27 @@ def add_static_user_fields(
 #
 #     return data
 
-def save_processed_dataset(dataset: List[str], cfg, raw_data_dir_name="data"):
-    data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
-    filepath = os.path.join(data_dir, cfg.name)
+def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data") -> str:
+    data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
+    filepath = os.path.join(data_dir, f"{cfg.name}.txt")
     os.makedirs(data_dir, exist_ok=True)
-    filepath = f"{filepath}.txt"
-    with open(filepath, "w") as file:
-        file.writelines(dataset)
+    with open(filepath, "w") as f:
+        f.writelines(dataset)
     return filepath
+
+
+def load_processed_dataset(cfg, processed_data_dir_name="data") -> List[str]:
+    data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
+    filepath = os.path.join(data_dir, f"{cfg.name}.txt")
+    with open(filepath, "r") as f:
+        dataset = [line.rstrip('\n') for line in f.readlines()]
+    return dataset
+
+def load_huggingface_dataset(cfg, processed_data_dir_name="data") -> Dataset:
+    data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
+    filepath = os.path.join(data_dir, f"{cfg.name}.txt")
+    dataset = datasets.load_dataset("text", data_files=filepath)
+    return dataset
 
 
 def save_json(data: Dict, file_dir: str, file_name: str) -> str:
@@ -384,7 +399,7 @@ def read_json(file_dir: str, file_name: str) -> Dict:
     assert os.path.exists(filepath), f"File not found at {filepath}"
     assert os.path.getsize(filepath) > 0, f"File is empty at {filepath}"
 
-    with open(filepath) as file:
+    with open(filepath, "r") as file:
         try:
             data = json.load(file)
         except json.decoder.JSONDecodeError as e:

@@ -1,6 +1,6 @@
 import hydra
 import event_prediction
-from event_prediction import model_utils, trainer_utils
+from event_prediction import model_utils, trainer_utils, data_utils
 import logging
 from typing import Dict
 
@@ -18,15 +18,9 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"GPT-2 size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
 
-    # dataset = event_prediction.data_utils.load_processed_dataset(cfg.data, cfg.processed_data_dir)
-    # tokens = tokenizer.tokenize(dataset)
-    # trainer = trainer_utils.get_trainer(
-    #     model=model,
-    #     tokenizer=tokenizer,
-    #     tokens=tokens,
-    #     args=cfg.trainer,
-    # )
-    # trainer.train()
+    tokenized_dataset = data_utils.load_huggingface_dataset(cfg.data, cfg.processed_data_dir)
+    trainer = trainer_utils.get_trainer(cfg.trainer, model, tokenizer, tokenized_dataset)
+    trainer.train()
     
     metrics = {}
     return metrics
