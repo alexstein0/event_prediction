@@ -145,7 +145,7 @@ def get_timestamps(X: pd.DataFrame,
     return d
 
 
-def add_hours_total_minutes(X: pd.DataFrame, output_column: str="total_minutes") -> pd.DataFrame:
+def add_hours_total_minutes(X: pd.DataFrame) -> pd.DataFrame:
     """Return a dataframe with new columns 'Hour' and 'total_minutes'"""
     timestamps = get_timestamps(X)
     X["Hour"] = timestamps.dt.hour
@@ -153,22 +153,36 @@ def add_hours_total_minutes(X: pd.DataFrame, output_column: str="total_minutes")
     zero_time = pd.to_datetime(np.zeros(len(X)))
     total_seconds = (timestamps - zero_time).dt.total_seconds().astype(int)
     total_minutes = total_seconds // 60
-    X[output_column] = total_minutes
+    X["total_minutes"] = total_minutes
     return X
 
-def add_minutes_from_last(X: pd.DataFrame, output_column: str="total_minutes"):
-    pass
+
+def add_is_online(X: pd.Series, flag: str="ONLINE") -> pd.Series:
+     return X == flag
 
 
-def convert_dollars_to_floats(X: pd.DataFrame, col_name: str, log_scale: bool = True) -> pd.DataFrame:
-    """Return a dataframe with the 'Amount' column converted to floats"""
-    X[col_name] = X[col_name].str.replace("$", "").astype(float)
+def add_minutes_from_last(X: pd.DataFrame, minutes_col: str, by_columns: List[str] = None) -> pd.DataFrame:
+    if by_columns is not None:
+        col = X.groupby(by_columns)[minutes_col]
+    else:
+        col = X[minutes_col].copy()
+    col = col.diff().fillna(0).astype("int64")
+    X["total_minutes_from_last"] = col
+    return X
+
+def convert_to_str(X: pd.Series) -> pd.Series:
+    X = X.convert_dtypes(convert_integer=True)
+    X = X.astype(str)
+    return X
+
+def convert_dollars_to_floats(X: pd.Series, log_scale: bool = True) -> pd.Series:
+    X = X.str.replace("$", "").astype(float)
     if log_scale:
-        X[col_name] = np.log(X[col_name])
+        X = np.log(X)
     return X
 
 
-def bucket_numeric(df: pd.DataFrame, bin_type: str, num_bins: int) -> pd.DataFrame:
+def bucket_numeric(X: pd.Series, bin_type: str, num_bins: int) -> (pd.Series, pd.array):
     """
     Convert all numeric values to integers based on a specified number of bins.
     "uniform" bins will be of equal size, "quantile" bins will have an equal number of
@@ -176,17 +190,13 @@ def bucket_numeric(df: pd.DataFrame, bin_type: str, num_bins: int) -> pd.DataFra
     """
     assert bin_type in ["uniform", "quantile"], f"bin_type must be 'uniform' or 'quantile', not {bin_type}"
 
-    # Collect the bins so we can use them on incoming data later.
-    bins_dict = {}
-
-    for column in df.select_dtypes(include='number'):
-        if bin_type == "uniform":
-            df[column], bins = pd.cut(df[column], bins=num_bins, retbins=True, labels=False, duplicates='drop')
-        elif bin_type == "quantile":
-            df[column], bins = pd.qcut(df[column], q=num_bins, retbins=True, labels=False, duplicates='drop')
-        bins_dict[column] = bins
-
-    return df, bins_dict
+    if bin_type == "uniform":
+        out, bins = pd.cut(X, bins=num_bins, retbins=True, labels=False, duplicates='drop')
+    elif bin_type == "quantile":
+        out, bins = pd.qcut(X, q=num_bins, retbins=True, labels=False, duplicates='drop')
+    else:
+        out, bins = None, None  # todo
+    return out, bins
 
 
 def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:

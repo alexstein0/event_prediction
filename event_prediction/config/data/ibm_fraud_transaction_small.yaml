@@ -25,14 +25,14 @@ numeric_columns:
 #  - "Month"
 #  - "Day"
   - "Hour"
-  # - "minutes_since_last"
+  - "total_minutes_from_last"
 #  - "Time"
 
 binary_columns:
   - "Is Fraud?"
   - "is_online"
 
-normalization_type: normal
+normalization_type:
 
 numeric_bucket_type: quantile
 numeric_bucket_amount: 10

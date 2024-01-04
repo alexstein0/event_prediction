@@ -1,7 +1,6 @@
 from .generic_tokenizer import GenericTokenizer
 import pandas as pd
 from typing import Tuple, Set
-import torch
 
 from event_prediction import data_utils
 

@@ -1,7 +1,6 @@
 import hydra
 import event_prediction
 from event_prediction import data_utils
-import logging
 from typing import Dict
 
 
@@ -11,7 +10,6 @@ def main_process_data(cfg, setup=None) -> Dict:
     tokenizer = event_prediction.get_tokenizer(cfg.tokenizer, cfg.data)
     normed_data = tokenizer.normalize(data)
     wordified_data = tokenizer.pretokenize(normed_data)
-    # todo
     tokenized_data = tokenizer.model(wordified_data)
     post_processed_data = tokenizer.post_process(tokenized_data)
     data_utils.save_processed_dataset(post_processed_data, cfg.data, cfg.processed_data_dir)
