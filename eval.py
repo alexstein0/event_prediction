@@ -14,7 +14,7 @@ def main_eval(cfg, setup=None):
         cfg.model, cfg.model_dir, cfg.tokenizer, cfg.data
     )
     # Load test data
-    tokenizer, dataset = event_prediction.get_tokenizer_and_data(
+    tokenizer, dataset = event_prediction.load_tokenizer_and_data(
         cfg.tokenizer_dir, cfg.data_dir, cfg.tokenizer, cfg.data
     )
     tokens = tokenizer.tokenize(dataset) 

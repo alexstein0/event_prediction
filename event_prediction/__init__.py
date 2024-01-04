@@ -14,9 +14,10 @@ __all__ = [
     "get_tokenizer"
 ]
 
-def get_tokenizer_and_data(tokenizer_dir, data_dir, tokenizer_cfg, data_cfg) -> (GenericTokenizer, str):
+def load_tokenizer_and_data(tokenizer_dir, data_dir, tokenizer_cfg, data_cfg) -> (GenericTokenizer, str):
 
     tokenizer = get_tokenizer(tokenizer_cfg, data_cfg)
+    tokenizer.eval()
     tokenizer_data = data_utils.read_json(tokenizer_dir, data_cfg.name)
     tokenizer.load(tokenizer_data)
     dataset = data_utils.load_dataset(data_cfg.name, data_dir)

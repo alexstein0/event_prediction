@@ -7,9 +7,9 @@ from event_prediction import data_utils
 class Composite(GenericTokenizer):
     def __init__(self, tokenizer_cfgs, data_cfgs):
         super().__init__(tokenizer_cfgs, data_cfgs)
-        pass
 
     def pretokenize(self, dataset):
+        # dataset = remove_spaces(dataset)
         all_tokens = data_utils.concat_dataframe_cols(dataset)
         return all_tokens
 

@@ -1,1 +1,6 @@
 name: atomic
+
+normalization_type:
+
+numeric_bucket_type:
+numeric_bucket_amount:

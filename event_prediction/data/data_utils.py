@@ -184,7 +184,7 @@ def convert_dollars_to_floats(X: pd.Series, log_scale: bool = True) -> pd.Series
     return X
 
 
-def bucket_numeric(X: pd.Series, bin_type: str, num_bins: int) -> (pd.Series, pd.array):
+def bucket_numeric(X: pd.Series, bin_type: str, num_bins: Union[int, List[float]]) -> (pd.Series, pd.array):
     """
     Convert all numeric values to integers based on a specified number of bins.
     "uniform" bins will be of equal size, "quantile" bins will have an equal number of
