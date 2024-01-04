@@ -207,13 +207,9 @@ def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
         log.info("No normalization applied")
     return df
 
-def concat_dataframe_cols(df: pd.DataFrame) -> List[str]:
-    result = []
-    for _, row in df.iterrows():
-        # row_string = '_'.join([f'{col}:{val}' for col, val in row.items()])
-        row_string = '_'.join([f'{val}' for col, val in row.items()])
-        result.append(row_string)
-    return result
+def concat_dataframe_cols(df: pd.DataFrame) -> pd.Series:
+    return df.astype(str).apply('_'.join, axis=1)
+
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""
