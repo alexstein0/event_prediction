@@ -9,7 +9,7 @@ class Composite(GenericTokenizer):
         super().__init__(tokenizer_cfgs, data_cfgs)
 
     def pretokenize(self, dataset):
-        dataset = remove_spaces(dataset)
+        # dataset = remove_spaces(dataset)
         all_tokens = data_utils.concat_dataframe_cols(dataset)
         return all_tokens
 
