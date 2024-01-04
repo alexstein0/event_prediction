@@ -19,6 +19,18 @@ class GenericTokenizer:
         self.id_to_token = {}
         self.vocab = set()
         self.data_processor = get_data_processor(data_cfgs)
+        self.is_train = True
+
+        self.buckets = {}
+        self.numeric_bucket_type = tokenizer_cfgs.numeric_bucket_type
+        self.numeric_bucket_amount = tokenizer_cfgs.numeric_bucket_amount
+        self.normalization_type = tokenizer_cfgs.normalization_type
+
+    def train(self):
+        self.is_train = True
+
+    def eval(self):
+        self.is_train = False
 
     def normalize(self, dataset):
         """Normalizes all the data in the table
@@ -28,6 +40,23 @@ class GenericTokenizer:
         """
         log.info("Normalizing Data...")
         dataset = self.data_processor.normalize_data(dataset)
+
+        # todo normalize and bucket by user?
+        # if self.normalization_type is not None:
+        #     updated = normalize_numeric(data[self.numeric_columns], self.normalization_type)
+        #     data[self.numeric_columns].replace(updated[self.numeric_columns])
+
+        if self.numeric_bucket_type is not None:
+            for col_name in self.data_processor.numeric_columns:
+                col = dataset[col_name]
+                if self.is_train:
+                    updated, buckets = data_utils.bucket_numeric(col, self.numeric_bucket_type, self.numeric_bucket_amount)
+                    self.buckets[col_name] = buckets
+                else:
+                    updated, _ = data_utils.bucket_numeric(col, "uniform", self.buckets[col_name])  # eval always is uniform bc passing in buckets
+
+                dataset[col_name] = updated
+
         return dataset
 
     def pretokenize(self, dataset):

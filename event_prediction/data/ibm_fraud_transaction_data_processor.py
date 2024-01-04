@@ -21,8 +21,6 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
         data = add_minutes_from_last(data, "total_minutes", self.index_columns)
 
         data = data[self.all_cols]
-        data = self.normalize_numeric_values(data, [])
-
         return data
 
     def pretokenize_data(self, data: pd.DataFrame) -> pd.DataFrame:
