@@ -14,7 +14,9 @@ def main_pretrain(cfg, setup=None) -> Dict:
         cfg.model, tokenizer
     )
     model_size = sum(t.numel() for t in model.parameters())
+    vocab_size = len(tokenizer.vocab)
     log.info(f"GPT-2 size: {model_size/1000**2:.1f}M parameters")
+    log.info(f"Vocab size: {vocab_size}")
 
     # dataset = event_prediction.data_utils.load_processed_dataset(cfg.data, cfg.processed_data_dir)
     # tokens = tokenizer.tokenize(dataset)
