@@ -5,13 +5,14 @@ from typing import Set, List, Dict
 
 log = logging.getLogger(__name__)
 
+
 class GenericTokenizer:
     def __init__(self, tokenizer_cfgs, data_cfgs):
         self.special_tokens_dict = {
-            'pad_token': '[PAD]',
-            'bos_token': '[BOS]',
-            'eos_token': '[EOS]',
-            'unk_token': '[UNK]',
+            "pad_token": "[PAD]",
+            "bos_token": "[BOS]",
+            "eos_token": "[EOS]",
+            "unk_token": "[UNK]",
         }
         self.tokenizer_type = data_cfgs.data_processor
         self.data_processor = get_data_processor(data_cfgs)
@@ -29,17 +30,18 @@ class GenericTokenizer:
         self.is_train = True
 
         # Properties expected by huggingface Trainer
-        self.pad_token = self.special_tokens_dict['pad_token']
-        self.bos_token = self.special_tokens_dict['bos_token']
-        self.eos_token = self.special_tokens_dict['eos_token']
-        self.unk_token = self.special_tokens_dict['unk_token']
+        self.pad_token = self.special_tokens_dict["pad_token"]
+        self.bos_token = self.special_tokens_dict["bos_token"]
+        self.eos_token = self.special_tokens_dict["eos_token"]
+        self.unk_token = self.special_tokens_dict["unk_token"]
 
         # todo should we assign the special tokens with ids here?
         # self.bos_token_id = None
         # self.eos_token_id = None
-        self.unk_token_id = self.add_token(self.unk_token)  # init with the unknown token
+        self.unk_token_id = self.add_token(
+            self.unk_token
+        )  # init with the unknown token
         self.is_initialized = False
-
 
     def train(self):
         self.is_train = True
@@ -64,10 +66,14 @@ class GenericTokenizer:
             for col_name in self.data_processor.numeric_columns:
                 col = dataset[col_name]
                 if self.is_train:
-                    updated, buckets = data_utils.bucket_numeric(col, self.numeric_bucket_type, self.numeric_bucket_amount)
+                    updated, buckets = data_utils.bucket_numeric(
+                        col, self.numeric_bucket_type, self.numeric_bucket_amount
+                    )
                     self.buckets[col_name] = list(buckets)
                 else:
-                    updated, _ = data_utils.bucket_numeric(col, "uniform", self.buckets[col_name])  # eval always is uniform bc passing in buckets
+                    updated, _ = data_utils.bucket_numeric(
+                        col, "uniform", self.buckets[col_name]
+                    )  # eval always is uniform bc passing in buckets
 
                 dataset[col_name] = updated
 
@@ -79,16 +85,17 @@ class GenericTokenizer:
             1. Composite tokens with goal of predicting next composite token
             2. atomic tokens with the goal of predicting the next set of atomic tokens
             3. The tokens can actually be embedding vectors
-        so the goal here is to create those sentences to be passed.  The output here should be agnostic to the problem (of tabular data)"""
+        so the goal here is to create those sentences to be passed.  The output here should be agnostic to the problem (of tabular data)
+        """
         raise NotImplementedError()
 
     def model(self, dataset):
         """Tokenization here consists of taking the previous 'sentences' and doing actual tokenization such as:
-            1. BPE
-            2. Word Piece
-            3. Word Level
-            4. Unigram
-            """
+        1. BPE
+        2. Word Piece
+        3. Word Level
+        4. Unigram
+        """
         raise NotImplementedError()
 
     def post_process(self, dataset, labels=None):
@@ -130,7 +137,6 @@ class GenericTokenizer:
         for val in dataset:
             self.add_token(val)
 
-
     def add_token(self, val: str) -> int:
         if val in self.vocab:
             return self._encode_val(val)
@@ -168,19 +174,24 @@ class GenericTokenizer:
         log.info(f"Saved tokenizer to {path}")
 
     def load(self, data: Dict):
-        # self.vocab = set(data["vocab"])
-        # self.id_to_token = data["id_to_token"]
-        self.token_to_id = data["token_to_id"]
-        self.id_to_token = {value: key for key, value in self.token_to_id.items()}
-        self.vocab = set(self.token_to_id.keys())
-        self.total_tokens = len(self.vocab)
-        self.buckets = data["buckets"]
-        self.special_tokens_dict = data["special_tokens"]
-        self.is_initialized = data["is_initialized"]
+        try:
+            # self.vocab = set(data["vocab"])
+            # self.id_to_token = data["id_to_token"]
+            self.token_to_id = data["token_to_id"]
+            self.id_to_token = {value: key for key, value in self.token_to_id.items()}
+            self.vocab = set(self.token_to_id.keys())
+            self.total_tokens = len(self.vocab)
+            self.buckets = data["buckets"]
+            self.special_tokens_dict = data["special_tokens"]
+            self.is_initialized = data["is_initialized"]
+        except KeyError as e:
+            log.error(
+                f"Error loading tokenizer because JSON file didn't include one of the expected tokenizer fields: {e}"
+            )
+            raise e
         self.update_special_token_ids()
 
     def load_vocab_from_file(self, file_name: str, tokenizer_dir: str):
         log.info(f"Loading tokenizer from {file_name}.json")
         data = data_utils.read_json(tokenizer_dir, f"{file_name}.json")
         self.load(data)
-

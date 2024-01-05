@@ -10,7 +10,7 @@ training_objective: causal # accepts either 'causal' or 'masked'
 loss_fn: CrossEntropyLoss # accepts CrossEntropyLoss
 optim: AdamW # accepts AdamW
 lr: 5e-4
-epochs: 2
+epochs: 1
 chkpt_path: ${hydra:run.dir}/chkpt
 
 train_args:

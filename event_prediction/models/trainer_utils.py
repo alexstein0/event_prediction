@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from einops import rearrange
 
 log = logging.getLogger(__name__)
 
@@ -49,18 +50,26 @@ class Trainer:
         for epoch in range(self.epochs):
             self.model.train()
             for step, batch in enumerate(self.train_loader, start=1):
+                # inputs: (b, t)
+                # targets: (b, t)
+                # logits: (b, t, v)
+                # b: batch size
+                # t: sequence length (tokens)
+                # v: vocab size
                 self.optim.zero_grad()
                 inputs, targets = batch
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
-                outputs = self.model(inputs)
-                loss = self.loss_fn(outputs, targets)
+                logits = self.model(inputs).logits
+                logits = rearrange(logits, 'b t v -> (b t) v')  # (b, n, v) -> (b*n, v)
+                targets = rearrange(targets, 'b t -> (b t)')  # (b, n) -> (b*n)
+                loss = self.loss_fn(logits, targets)
                 loss.backward()
                 self.optim.step()
-                if step % 100 == 0:
-                    log.info(f"Epoch: {epoch} | Step: {step} | Loss: {loss.item()}")
+                # if step % 100 == 0:
+                log.info(f"Epoch: {epoch} | Step: {step} | Loss: {loss.item()}")
 
-        self.validate()
+        # self.validate()
         torch.save(self.model.state_dict(), self.chkpt_path)
         return self.chkpt_path
 
