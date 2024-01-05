@@ -5,7 +5,6 @@ defaults:
   - data: ibm_fraud_transaction_small
   - tokenizer: composite
   - model: gpt2
-  - trainer: standard_trainer
   - wandb: none
   - _self_
   - override hydra/job_logging: custom

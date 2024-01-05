@@ -18,9 +18,10 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"GPT-2 size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
 
-    tokenized_dataset = data_utils.load_huggingface_dataset(cfg.data, cfg.processed_data_dir)
-    trainer = trainer_utils.get_trainer(cfg.trainer, model, tokenizer, tokenized_dataset)
-    trainer.train()
+    tokenized_string_dataset = data_utils.load_processed_dataset(cfg.data, cfg.processed_data_dir)
+    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
+    # trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
+    # weights_filepath = trainer.train()
     
     metrics = {}
     return metrics

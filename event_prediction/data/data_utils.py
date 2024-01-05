@@ -10,8 +10,11 @@ import datasets
 import numpy as np
 import pandas as pd
 import requests
+import torch
 from datasets import Dataset
 from hydra.utils import get_original_cwd
+from omegaconf import DictConfig
+from torch.utils import data
 from tqdm import tqdm
 
 log = logging.getLogger(__name__)
@@ -363,6 +366,10 @@ def add_static_user_fields(
 #     return data
 
 def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data") -> str:
+    """
+    Save list of strings to a text file. They are saved on a single line, with 
+    no separating spaces or newlines added.
+    """
     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
     filepath = os.path.join(data_dir, f"{cfg.name}.txt")
     os.makedirs(data_dir, exist_ok=True)
@@ -371,18 +378,23 @@ def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="dat
     return filepath
 
 
-def load_processed_dataset(cfg, processed_data_dir_name="data") -> List[str]:
+def load_processed_dataset(cfg, processed_data_dir_name="data") -> str:
+    """
+    Load the contents of a text file to a single string, with no newlines or 
+    whitespace removed.
+    """
     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
     filepath = os.path.join(data_dir, f"{cfg.name}.txt")
     with open(filepath, "r") as f:
-        dataset = [line.rstrip('\n') for line in f.readlines()]
+        dataset = f.read()        
     return dataset
 
-def load_huggingface_dataset(cfg, processed_data_dir_name="data") -> Dataset:
-    data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
-    filepath = os.path.join(data_dir, f"{cfg.name}.txt")
-    dataset = datasets.load_dataset("text", data_files=filepath)
-    return dataset
+
+# def load_huggingface_dataset(cfg, processed_data_dir_name="data") -> Dataset:
+#     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
+#     filepath = os.path.join(data_dir, f"{cfg.name}.txt")
+#     dataset = datasets.load_dataset("text", data_files=filepath)
+#     return dataset
 
 
 def save_json(data: Dict, file_dir: str, file_name: str) -> str:
@@ -406,6 +418,61 @@ def read_json(file_dir: str, file_name: str) -> Dict:
             log.error(f"File {filepath} is not in JSON format: {e}")
             raise e
     return data
+
+
+def get_dataloader(cfg: DictConfig, tokenizer, str_tokens):
+    """
+    Takes a string of raw text tokens and a tokenizer for encoding and returns a PyTorch 
+    Dataloader object with examples, labels batches ready for training.
+    The labels can be either the next token in the sequence (causal language modeling)
+    or a masked token (masked language modeling).
+    """
+    id_tokens = tokenizer.encode(str_tokens)
+    
+    if cfg.training_objective == "causal":
+        dataset = NextTokenPredictionDataset(id_tokens, cfg.context_length)
+    elif cfg.training_objective == "masked":
+        raise NotImplementedError
+    else:
+        raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
+    
+    train_loader, val_loader = to_dataloader(cfg, dataset)
+    return train_loader, val_loader
+    
+
+def to_dataloader(cfg: DictConfig, dataset: data.Dataset) -> Tuple[data.DataLoader, data.DataLoader]:
+    """Given a PyTorch Dataset and config for batch size, return a Pytorch DataLoader."""
+    n = len(dataset)
+    train_size = int(cfg.train_ratio * n)
+    val_size = n - train_size
+    train_data, val_data = data.random_split(dataset, [train_size, val_size])
+    train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
+    val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
+    return train_loader, val_loader
+
+
+class NextTokenPredictionDataset(data.Dataset):
+    """
+    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language 
+    Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
+    """
+    def __init__(self, data: torch.Tensor, context_length: int):
+        self.data = data
+        self.context_length = context_length
+
+    def __len__(self) -> int:
+        return len(self.data) // self.context_length
+
+    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        # The corresponding label for each example is a chunk of tokens of the same size,
+        # but shifted one token to the right.
+        
+        # TODO: It is a arbitrary design choice whether to do the shift of the labels here
+        # or in the loss function. Huggingface's DataCollator is designed to let the loss
+        # function do the shifting, so we need to change this if we want to be compatible with that.
+        x = self.data[i : i + self.context_length]
+        y = self.data[i + 1 : i + self.context_length + 1]
+        return x, y
 
 class TqdmToLogger(tqdm):
     """File-like object to redirect tqdm output to a logger."""
