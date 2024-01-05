@@ -6,8 +6,12 @@ context_length: 128
 # Train args
 batch_size: 32
 train_ratio: 0.9
-# accepts either 'causal' fo next token prediction or 'masked'
-training_objective: causal  
+training_objective: causal # accepts either 'causal' or 'masked'
+loss_fn: CrossEntropyLoss # accepts CrossEntropyLoss
+optim: AdamW # accepts AdamW
+lr: 5e-4
+epochs: 2
+chkpt_path: ${hydra:run.dir}/chkpt
 
 train_args:
   # output_dir: ${hydra:run.dir}/trainer

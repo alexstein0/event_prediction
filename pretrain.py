@@ -20,8 +20,8 @@ def main_pretrain(cfg, setup=None) -> Dict:
 
     tokenized_string_dataset = data_utils.load_processed_dataset(cfg.data, cfg.processed_data_dir)
     train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
-    # trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
-    # weights_filepath = trainer.train()
+    trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
+    weights_filepath = trainer.train()
     
     metrics = {}
     return metrics

@@ -92,7 +92,7 @@ class GenericTokenizer:
     def encode(self, data: List[str]) -> torch.Tensor:
         if len(self.vocab) == 0:
             raise ValueError("Must create token ids first")
-        output = torch.zeros(len(data))
+        output = torch.zeros(len(data), dtype=torch.long)
         for i in range(len(data)):
             val = self.token_to_id.get(data[i], -1)  # todo (unknown tokens?)
             output[i] = val
