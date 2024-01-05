@@ -9,14 +9,33 @@ class Composite(GenericTokenizer):
         super().__init__(tokenizer_cfgs, data_cfgs)
 
     def pretokenize(self, dataset):
-        # dataset = remove_spaces(dataset)
-        all_tokens = data_utils.concat_dataframe_cols(dataset)
-        return all_tokens
+        all_tokens = data_utils.concat_dataframe_cols(dataset[self.data_processor.all_cols])
+        labels = dataset[self.data_processor.index_columns]
+        return all_tokens, labels
 
     def model(self, dataset):
         # todo check if this is right way to do composite? words are the concat of the whole sentence
         # this is effectively a "word level" tokenizer.  most of the work is done by the pretokenizer and this simply maps inputs to IDS
         self.define_tokenization(dataset)
+        return dataset
+
+    def post_process(self, dataset, labels=None):
+        special_tokens_added = []
+        if labels is not None:
+            index_tokens = []
+            dataset.reset_index(drop=True, inplace=True)
+            labels.reset_index(drop=True, inplace=True)
+            for token in labels.columns:
+                tok_locs = labels[token][labels[token] != labels[token].shift()].copy().astype(str)
+                tok_locs[:] = token
+                index_tokens.append(tok_locs)
+                special_tokens_added.append(token)
+            dataset = pd.concat([*index_tokens, dataset], axis=0).sort_index().reset_index(drop=True)
+
+        for st in special_tokens_added:
+            self.special_tokens_dict[st] = st
+            self.add_token(st)
+
         return dataset
 
     # TODO:

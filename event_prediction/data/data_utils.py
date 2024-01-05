@@ -38,7 +38,7 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
         os.makedirs(data_dir, exist_ok=True)
         data = download_data_from_url(cfg.url)
         if save_tar_to_disk:
-            save_raw_data(data, f"{file_path}.{ext}")
+            save_raw_data(data, f"{file_path}{ext}")
         if ext == ".tgz":
             data = extract(data)
         # pd.read_csv can take a filename or a file-like object, so we can directly pass our BytesIO data object.
@@ -215,6 +215,8 @@ def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
 def concat_dataframe_cols(df: pd.DataFrame) -> pd.Series:
     return df.astype(str).apply('_'.join, axis=1)
 
+def remove_spaces(X: pd.Series) -> pd.Series:
+    return X.str.replace(' ', '')
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""

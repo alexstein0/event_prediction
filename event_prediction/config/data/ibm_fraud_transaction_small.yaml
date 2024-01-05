@@ -1,8 +1,7 @@
 name: ibm_fraud_transaction_small
+url: "https://obj.umiacs.umd.edu/eventprediction/transactions_small.tgz"
 
 data_processor: ibm_fraud_transaction
-
-url: "https://obj.umiacs.umd.edu/eventprediction/transactions_small.tgz"
 
 train_test_split_year: 2018
 sample_size: 10

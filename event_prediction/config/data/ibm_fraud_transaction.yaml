@@ -1,8 +1,7 @@
 name: ibm_fraud_transaction
+url: "https://obj.umiacs.umd.edu/eventprediction/transactions.tgz"
 
 data_processor: ibm_fraud_transaction
-
-url: "https://obj.umiacs.umd.edu/eventprediction/transactions.tgz"
 
 train_test_split_year: 2018
 sample_size: 10
@@ -14,7 +13,7 @@ index_columns:
 
 categorical_columns:
   - "Use Chip"
-  - "Merchant Name"
+#  - "Merchant Name"
 #  - "Merchant City"
 #  - "Merchant State"
   - "Zip"
@@ -31,8 +30,3 @@ numeric_columns:
 binary_columns:
   - "Is Fraud?"
   - "is_online"
-
-normalization_type:
-
-numeric_bucket_type: quantile
-numeric_bucket_amount: 10

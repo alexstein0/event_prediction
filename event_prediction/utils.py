@@ -63,11 +63,11 @@ def main_launcher(cfg, main_fn, job_name=""):
             for k, v in metrics.items():
                 wandb.run.summary[k] = v
 
-        if torch.cuda.is_available():
-            max_alloc = f"{torch.cuda.max_memory_allocated(setup['device'])/float(1024**3):,.3f} GB"
-            max_reserved = f"{torch.cuda.max_memory_reserved(setup['device'])/float(1024**3):,.3f} GB"
-            log.info(f"Max. Mem allocated: {max_alloc}. Max. Mem reserved: {max_reserved}.")
-            log.info(f"{metrics['kWh']:.2e} kWh of electricity used for GPU(s) during job.")
+        # if torch.cuda.is_available():
+        #     max_alloc = f"{torch.cuda.max_memory_allocated(setup['device'])/float(1024**3):,.3f} GB"
+        #     max_reserved = f"{torch.cuda.max_memory_reserved(setup['device'])/float(1024**3):,.3f} GB"
+        #     log.info(f"Max. Mem allocated: {max_alloc}. Max. Mem reserved: {max_reserved}.")
+        #     log.info(f"{metrics['kWh']:.2e} kWh of electricity used for GPU(s) during job.")
     log.info("-----------------Shutdown complete.--------------------------")
 
 

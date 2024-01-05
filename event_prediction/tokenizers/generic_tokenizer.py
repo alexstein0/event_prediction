@@ -13,16 +13,33 @@ class GenericTokenizer:
             'eos_token': '[EOS]',
             'unk_token': '[UNK]',
         }
-        self.token_to_id = {}
-        self.id_to_token = {}
-        self.vocab = set()
+        self.tokenizer_type = data_cfgs.data_processor
         self.data_processor = get_data_processor(data_cfgs)
-        self.is_train = True
-
-        self.buckets = {}
         self.numeric_bucket_type = tokenizer_cfgs.numeric_bucket_type
         self.numeric_bucket_amount = tokenizer_cfgs.numeric_bucket_amount
         self.normalization_type = tokenizer_cfgs.normalization_type
+
+        self.token_to_id = {}
+        self.id_to_token = {}
+        self.vocab = set()
+        self.total_tokens = 0
+
+        self.buckets = {}
+
+        self.is_train = True
+
+        # Properties expected by huggingface Trainer
+        self.pad_token = self.special_tokens_dict['pad_token']
+        self.bos_token = self.special_tokens_dict['bos_token']
+        self.eos_token = self.special_tokens_dict['eos_token']
+        self.unk_token = self.special_tokens_dict['unk_token']
+
+        # todo should we assign the special tokens with ids here?
+        # self.bos_token_id = None
+        # self.eos_token_id = None
+        self.unk_token_id = self.add_token(self.unk_token)  # init with the unknown token
+        self.is_initialized = False
+
 
     def train(self):
         self.is_train = True
@@ -30,19 +47,12 @@ class GenericTokenizer:
     def eval(self):
         self.is_train = False
 
-        # Properties expected by huggingface Trainer
-        self.bos_token_id = None
-        self.eos_token_id = None
-        self.pad_token = self.special_tokens_dict['pad_token']
-
-
     def normalize(self, dataset):
         """Normalizes all the data in the table
         This includes:
             1. bucketing numeric values if doing that (maybe preprocessing?)
             2. adding any new values to the table (such as converting dollars, adding total minutes, etc)
         """
-        log.info("Normalizing Data...")
         dataset = self.data_processor.normalize_data(dataset)
 
         # todo normalize and bucket by user?
@@ -55,7 +65,7 @@ class GenericTokenizer:
                 col = dataset[col_name]
                 if self.is_train:
                     updated, buckets = data_utils.bucket_numeric(col, self.numeric_bucket_type, self.numeric_bucket_amount)
-                    self.buckets[col_name] = buckets
+                    self.buckets[col_name] = list(buckets)
                 else:
                     updated, _ = data_utils.bucket_numeric(col, "uniform", self.buckets[col_name])  # eval always is uniform bc passing in buckets
 
@@ -70,11 +80,7 @@ class GenericTokenizer:
             2. atomic tokens with the goal of predicting the next set of atomic tokens
             3. The tokens can actually be embedding vectors
         so the goal here is to create those sentences to be passed.  The output here should be agnostic to the problem (of tabular data)"""
-        # log.info("Preprocessing data")
-        # dataset = self.data_processor.preprocess_data(dataset)
-        # return dataset
         raise NotImplementedError()
-
 
     def model(self, dataset):
         """Tokenization here consists of taking the previous 'sentences' and doing actual tokenization such as:
@@ -85,68 +91,96 @@ class GenericTokenizer:
             """
         raise NotImplementedError()
 
-    def post_process(self, dataset):
-        return dataset
-        # raise NotImplementedError()
+    def post_process(self, dataset, labels=None):
+        raise NotImplementedError()
+
+    def training_complete(self):
+        self.is_initialized = True
+
+    def _encode_val(self, data: str) -> int:
+        return self.token_to_id.get(data, self.unk_token_id)  # todo (unknown tokens?)
 
     def encode(self, data: List[str]) -> torch.Tensor:
-        if len(self.vocab) == 0:
-            raise ValueError("Must create token ids first")
+        # if not self.is_initialized:
+        #     raise ValueError("Must create token ids first")
         output = torch.zeros(len(data), dtype=torch.long)
         for i in range(len(data)):
-            val = self.token_to_id.get(data[i], -1)  # todo (unknown tokens?)
+            val = self._encode_val(data[i])
             output[i] = val
         return output
 
+    def _decode_val(self, data: int) -> str:
+        return self.id_to_token.get(data, self.unk_token)
+
     def decode(self, data: torch.Tensor) -> List[str]:
-        if len(self.vocab) == 0:
-            raise ValueError("Must create token ids first")
+        # if not self.is_initialized:
+        #     raise ValueError("Must create token ids first")
         output = []
         for i in data:
-            val = self.id_to_token.get(i, self.special_tokens_dict['unk_token'])
+            val = self._decode_val(i)
             output.append(val)
         return output
 
     def define_tokenization(self, dataset: Set[str]):
-        i = 0
         for key, val in self.special_tokens_dict.items():
-            self.vocab.add(val)
-            self.id_to_token[i] = val
-            self.token_to_id[val] = i
-            i += 1
-
-        self.vocab.update(dataset)
-        for val in dataset:
-            self.id_to_token[i] = val
-            self.token_to_id[val] = i
-            i += 1
-
+            # todo make preordered?
+            self.add_token(val)
         self.update_special_token_ids()
 
+        for val in dataset:
+            self.add_token(val)
+
+
+    def add_token(self, val: str) -> int:
+        if val in self.vocab:
+            return self._encode_val(val)
+        self.vocab.add(val)
+        self.id_to_token[self.total_tokens] = val
+        self.token_to_id[val] = self.total_tokens
+        self.total_tokens += 1
+        return self.total_tokens - 1
 
     def update_special_token_ids(self):
-        self.bos_token_id = self.token_to_id[self.special_tokens_dict['bos_token']]
-        self.eos_token_id = self.token_to_id[self.special_tokens_dict['eos_token']]
+        # self.bos_token_id = self.encode([self.special_tokens_dict['bos_token']]).item()
+        # self.eos_token_id = self.encode([self.special_tokens_dict['eos_token']]).item()
+        for key, value in self.special_tokens_dict.items():
+            setattr(self, key, value)
+            setattr(self, f"{key}_id", self._encode_val(value))
 
+    def get_metrics(self) -> Dict:
+        output = {}
+        output["is_initialized"] = self.is_initialized
+        output["vocab_size"] = len(self.vocab)
+        output["Tokenizer type"] = self.tokenizer_type
+
+        return output
 
     def save(self, file_name: str, tokenizer_dir: str):
         output = {}
-        output["vocab"] = list(self.vocab)
-        output["id_to_token"] = self.id_to_token
+        # output["vocab"] = list(self.vocab)
+        # output["id_to_token"] = self.id_to_token
         output["token_to_id"] = self.token_to_id
+        output["buckets"] = self.buckets
+        output["special_tokens"] = self.special_tokens_dict
+        output["is_initialized"] = self.is_initialized
 
         path = data_utils.save_json(output, tokenizer_dir, f"{file_name}.json")
         log.info(f"Saved tokenizer to {path}")
 
-
     def load(self, data: Dict):
-        self.vocab = set(data["vocab"])
-        self.id_to_token = data["id_to_token"]
+        # self.vocab = set(data["vocab"])
+        # self.id_to_token = data["id_to_token"]
         self.token_to_id = data["token_to_id"]
+        self.id_to_token = {value: key for key, value in self.token_to_id.items()}
+        self.vocab = set(self.token_to_id.keys())
+        self.total_tokens = len(self.vocab)
+        self.buckets = data["buckets"]
+        self.special_tokens_dict = data["special_tokens"]
+        self.is_initialized = data["is_initialized"]
         self.update_special_token_ids()
 
-
     def load_vocab_from_file(self, file_name: str, tokenizer_dir: str):
+        log.info(f"Loading tokenizer from {file_name}.json")
         data = data_utils.read_json(tokenizer_dir, f"{file_name}.json")
         self.load(data)
 

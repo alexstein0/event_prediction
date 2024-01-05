@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import List
 
-from .data_utils import convert_to_str
+from .data_utils import convert_to_str, remove_spaces
 
 class GenericDataProcessor:
     def __init__(self, data_cfg):
@@ -11,15 +11,12 @@ class GenericDataProcessor:
         self.binary_columns = data_cfg.binary_columns
 
         self.all_cols = []
-        self.all_cols.extend(self.index_columns)
+        # self.all_cols.extend(self.index_columns)
         self.all_cols.extend(self.categorical_columns)
         self.all_cols.extend(self.numeric_columns)
         self.all_cols.extend(self.binary_columns)
 
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        raise NotImplementedError()
-
-    def pretokenize_data(self, data):
         raise NotImplementedError()
 
     def arrange_columns(self, data: pd.DataFrame, sort_col:str = None) -> pd.DataFrame:
@@ -29,7 +26,7 @@ class GenericDataProcessor:
         data = data.sort_values(by=sort_columns)
         return data
 
-    def convert_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+    def convert_columns_to_types(self, data: pd.DataFrame) -> pd.DataFrame:
         for col_name in data.columns:
             if col_name in self.numeric_columns:
                 data[col_name] = data[col_name].astype(float)
@@ -38,5 +35,12 @@ class GenericDataProcessor:
             elif col_name in self.binary_columns:
                 data[col_name] = data[col_name].astype('bool')
             else:
-                print(f"Ignoring column {col_name}")
+                pass
+                # print(f"Ignoring column {col_name}")
         return data
+
+    def clean_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        for col_name in self.categorical_columns:
+            data[col_name] = remove_spaces(data[col_name])
+        return data
+
