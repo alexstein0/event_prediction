@@ -453,6 +453,24 @@ def to_dataloader(cfg: DictConfig, dataset: data.Dataset) -> Tuple[data.DataLoad
     return train_loader, val_loader
 
 
+def save_checkpoint(model, epoch: int, chkpt_dir: str) -> str:
+    """Save model weights to disk."""
+    #TODO: save optimizer and scheduler state dicts as well so we can resume training
+    # Something like:
+    # checkpoint = {
+    #     "model": model.state_dict(),
+    #     "optimizer": optimizer.state_dict(),
+    #     "scheduler": scheduler.state_dict(),
+    #     "epoch": epoch,
+    #     "loss": loss,
+    # }
+    chkpt_dir = os.path.join(get_original_cwd(), chkpt_dir)
+    filepath = os.path.join(chkpt_dir, f"epoch_{epoch}_chkpt.pth")
+    os.makedirs(chkpt_dir, exist_ok=True)
+    torch.save(model.state_dict(), filepath)
+    return filepath
+
+
 class NextTokenPredictionDataset(data.Dataset):
     """
     Returns a PyTorch Dataset object with labels extracted correctly for Causal Language 
