@@ -2,11 +2,13 @@ import logging
 
 import torch
 import transformers
+from einops import rearrange
 from omegaconf import DictConfig
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from einops import rearrange
+
+from event_prediction import data_utils
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +72,7 @@ class Trainer:
                 log.info(f"Epoch: {epoch} | Step: {step} | Loss: {loss.item()}")
 
         # self.validate()
-        torch.save(self.model.state_dict(), self.chkpt_path)
+        data_utils.save_checkpoint(self.model, self.chkpt_path, epoch)
         return self.chkpt_path
 
     def validate(self):
