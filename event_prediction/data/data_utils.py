@@ -453,7 +453,7 @@ def to_dataloader(cfg: DictConfig, dataset: data.Dataset) -> Tuple[data.DataLoad
     return train_loader, val_loader
 
 
-def save_checkpoint(model, epoch: int, chkpt_dir: str) -> str:
+def save_checkpoint(model, chkpt_dir: str, epoch: int = None) -> str:
     """Save model weights to disk."""
     #TODO: save optimizer and scheduler state dicts as well so we can resume training
     # Something like:

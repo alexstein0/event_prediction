@@ -72,7 +72,7 @@ class Trainer:
                 log.info(f"Epoch: {epoch} | Step: {step} | Loss: {loss.item()}")
 
         # self.validate()
-        data_utils.save_checkpoint(self.model, self.chkpt_path)
+        data_utils.save_checkpoint(self.model, self.chkpt_path, epoch)
         return self.chkpt_path
 
     def validate(self):
