@@ -250,12 +250,12 @@ def add_index_tokens(dataset: pd.DataFrame, labels: pd.DataFrame) -> (pd.DataFra
     for token in labels.columns:
         tok_locs = labels[token][labels[token] != labels[token].shift()].copy().astype(str)
         tok_locs[:] = token
+        tok_locs = tok_locs.to_frame()
+        tok_locs.columns = ["spec"]
         index_tokens.append(tok_locs)
         special_tokens_added.append(token)
-    dataset = pd.concat([*index_tokens, dataset], axis=0).sort_index().reset_index(drop=True)
-    # todo datatypes not right anymore
-    dataset = dataset.rename({0: "spec"}, axis=1)
-    return dataset, special_tokens_added
+    combined = pd.concat([*index_tokens, dataset], axis=0).sort_index().reset_index(drop=True)
+    return combined, special_tokens_added
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""

@@ -23,7 +23,9 @@ class Composite(GenericTokenizer):
         # todo move this to pretokenize? (see atomic.pretokenize)
         special_tokens_added = []
         if labels is not None:
-            dataset, special_tokens_added = data_utils.add_index_tokens(dataset, labels)
+            dataset, special_tokens_added = data_utils.add_index_tokens(dataset.to_frame("tokens"), labels)
+            dataset.loc[dataset['tokens'].isnull(), 'tokens'] = dataset.loc[dataset['tokens'].isnull(), 'spec']
+            dataset = dataset["tokens"]
 
         for st in special_tokens_added:
             self.add_special_token(st)
