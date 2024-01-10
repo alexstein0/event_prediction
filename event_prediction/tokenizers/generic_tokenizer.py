@@ -74,7 +74,7 @@ class GenericTokenizer:
                     updated, _ = data_utils.bucket_numeric(
                         col, "uniform", self.buckets[col_name]
                     )  # eval always is uniform bc passing in buckets
-
+                updated = updated.astype(str)
                 dataset[col_name] = updated
 
         return dataset
@@ -98,7 +98,7 @@ class GenericTokenizer:
         """
         raise NotImplementedError()
 
-    def post_process(self, dataset, labels=None):
+    def post_process(self, dataset, labels=None) -> List[str]:
         raise NotImplementedError()
 
     def training_complete(self):
@@ -131,7 +131,7 @@ class GenericTokenizer:
 
     def define_tokenization(self, dataset: Set[str]):
         for key, val in self.special_tokens_dict.items():
-            # todo make preordered?
+            #  todo make preordered?
             self.add_token(val)
         self.update_special_token_ids()
 
@@ -146,6 +146,10 @@ class GenericTokenizer:
         self.token_to_id[val] = self.total_tokens
         self.total_tokens += 1
         return self.total_tokens - 1
+
+    def add_special_token(self, st: str) -> int:
+        self.special_tokens_dict[st] = st
+        return self.add_token(st)
 
     def update_special_token_ids(self):
         # self.bos_token_id = self.encode([self.special_tokens_dict['bos_token']]).item()

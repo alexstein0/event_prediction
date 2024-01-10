@@ -215,8 +215,47 @@ def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
 def concat_dataframe_cols(df: pd.DataFrame) -> pd.Series:
     return df.astype(str).apply('_'.join, axis=1)
 
+def add_special_tabular_tokens(df: pd.DataFrame, add_col_sep: str='COL', add_row_sep: str='ROW') -> pd.DataFrame:
+    output = pd.DataFrame()
+    if add_col_sep is not None:
+        for col in df.columns:
+            output[col] = df[col]
+            output[f'sep_{col}'] = add_col_sep
+        output.drop(output.columns[-1], axis=1)
+    if add_row_sep is not None:
+        output['row_sep'] = add_row_sep
+
+    return output
+
+def cols_to_words(df: pd.DataFrame, second_table: pd.DataFrame=None) -> pd.Series:
+    df["index_col"] = df.index
+    all_tokens = df.values.tolist()
+    if second_table is not None:
+        second_table["index_col"] = second_table.index
+        second_tokens = second_table.values.tolist()
+        all_tokens.extend(second_tokens)
+    all_tokens.sort(key=lambda x: x[-1])
+    all_tokens = [x for row in all_tokens for x in row[:-1]]
+    return pd.Series(all_tokens)
+
 def remove_spaces(X: pd.Series) -> pd.Series:
     return X.str.replace(' ', '')
+
+
+def add_index_tokens(dataset: pd.DataFrame, labels: pd.DataFrame) -> (pd.DataFrame, List[str]):
+    special_tokens_added = []
+    index_tokens = []
+    dataset.reset_index(drop=True, inplace=True)
+    labels.reset_index(drop=True, inplace=True)
+    for token in labels.columns:
+        tok_locs = labels[token][labels[token] != labels[token].shift()].copy().astype(str)
+        tok_locs[:] = token
+        tok_locs = tok_locs.to_frame()
+        tok_locs.columns = ["spec"]
+        index_tokens.append(tok_locs)
+        special_tokens_added.append(token)
+    combined = pd.concat([*index_tokens, dataset], axis=0).sort_index().reset_index(drop=True)
+    return combined, special_tokens_added
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""
