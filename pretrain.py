@@ -19,7 +19,17 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Vocab size: {vocab_size}")
 
     tokenized_string_dataset = data_utils.load_processed_dataset(cfg.data, cfg.processed_data_dir)
+    assert isinstance(tokenized_string_dataset, list), f"Expected list of string tokens, instead got {type(tokenized_string_dataset)}"
+    log.info(f"Total tokens in dataset: {len(tokenized_string_dataset)}")
+    log.info(f"Unique tokens in dataset: {len(set(tokenized_string_dataset))}")
+    log.info(f"Num tokens not in vocab: {len(set(tokenized_string_dataset) - tokenizer.vocab)}")
+
     train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
+    log.info(f"Num train loader batches: {len(train_loader)}")
+    log.info(f"Num val loader batches: {len(val_loader)}")
+    log.info(f"Dataloader batch size: {train_loader.batch_size}")
+    log.info(f"Total tokens in dataloaders: {(len(train_loader) + len(val_loader)) * val_loader.batch_size}")
+
     trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
     weights_filepath = trainer.train()
     

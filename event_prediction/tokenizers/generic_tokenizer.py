@@ -110,6 +110,7 @@ class GenericTokenizer:
     def encode(self, data: List[str]) -> torch.Tensor:
         # if not self.is_initialized:
         #     raise ValueError("Must create token ids first")
+        assert isinstance(data, list), f"Data must be a list of string tokens, instead got type {type(data)}"
         output = torch.zeros(len(data), dtype=torch.long)
         for i in range(len(data)):
             val = self._encode_val(data[i])

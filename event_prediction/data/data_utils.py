@@ -406,21 +406,24 @@ def add_static_user_fields(
 #
 #     return data
 
-def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data") -> str:
+def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data", sep='\n') -> str:
     """
-    Save list of strings to a text file. They are saved on a single line, with 
-    no separating spaces or newlines added.
+    Save list of strings to a text file. They are saved with a newline seperator between
+    each string in the list by default.
     """
     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
     filepath = os.path.join(data_dir, f"{cfg.name}.txt")
     os.makedirs(data_dir, exist_ok=True)
+
+    if sep is not None:
+        dataset = [line + sep for line in dataset]
 
     with open(filepath, "w") as f:
         f.writelines(dataset)
     return filepath
 
 
-def load_processed_dataset(cfg, processed_data_dir_name="data") -> str:
+def load_processed_dataset(cfg, processed_data_dir_name="data", sep='\n') -> List[str]:
     """
     Load the contents of a text file to a single string, with no newlines or 
     whitespace removed.
@@ -428,7 +431,9 @@ def load_processed_dataset(cfg, processed_data_dir_name="data") -> str:
     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
     filepath = os.path.join(data_dir, f"{cfg.name}.txt")
     with open(filepath, "r") as f:
-        dataset = f.read()        
+        dataset = f.read()
+    
+    dataset = dataset.strip().split(sep)
     return dataset
 
 
@@ -491,24 +496,6 @@ def to_dataloader(cfg: DictConfig, dataset: data.Dataset) -> Tuple[data.DataLoad
     train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
     return train_loader, val_loader
-
-
-def save_checkpoint(model, chkpt_dir: str, epoch: int = None) -> str:
-    """Save model weights to disk."""
-    #TODO: save optimizer and scheduler state dicts as well so we can resume training
-    # Something like:
-    # checkpoint = {
-    #     "model": model.state_dict(),
-    #     "optimizer": optimizer.state_dict(),
-    #     "scheduler": scheduler.state_dict(),
-    #     "epoch": epoch,
-    #     "loss": loss,
-    # }
-    chkpt_dir = os.path.join(get_original_cwd(), chkpt_dir)
-    filepath = os.path.join(chkpt_dir, f"epoch_{epoch}_chkpt.pth")
-    os.makedirs(chkpt_dir, exist_ok=True)
-    torch.save(model.state_dict(), filepath)
-    return filepath
 
 
 class NextTokenPredictionDataset(data.Dataset):
