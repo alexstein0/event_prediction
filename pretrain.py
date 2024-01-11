@@ -28,7 +28,8 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Num train loader batches: {len(train_loader)}")
     log.info(f"Num val loader batches: {len(val_loader)}")
     log.info(f"Dataloader batch size: {train_loader.batch_size}")
-    log.info(f"Total tokens in dataloaders: {(len(train_loader) + len(val_loader)) * val_loader.batch_size}")
+    log.info(f"Model context length: {cfg.model.context_length}")
+    log.info(f"Total tokens in dataloaders (n_batches * batch_sz * context_len): {(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.context_length}")
 
     trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
     weights_filepath = trainer.train()
