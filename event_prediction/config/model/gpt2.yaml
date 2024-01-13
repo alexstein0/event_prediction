@@ -1,4 +1,5 @@
 name: gpt2
+project: event-prediction
 
 # Model args
 context_length: 128
@@ -11,22 +12,24 @@ loss_fn: CrossEntropyLoss # accepts CrossEntropyLoss
 optim: AdamW # accepts AdamW
 lr: 5e-4
 epochs: 1
-chkpt_path: ${hydra:run.dir}/chkpt
+val_checks_per_epoch: 1
+ckpt_path: ${hydra:run.dir}/ckpt
+upload_ckpt: False
 
-train_args:
-  # output_dir: ${hydra:run.dir}/trainer
-  # per_device_train_batch_size: 32
-  # per_device_eval_batch_size: 32
-  # evaluation_strategy: "steps"
-  # eval_steps: 5000
-  # logging_steps: 5000
-  # gradient_accumulation_steps: 8
-  # num_train_epochs: 1
-  # weight_decay: 0.1
-  # warmup_steps: 1000
-  # lr_scheduler_type: "cosine"
-  # learning_rate: 0.0005
-  # save_steps: 5000
-  # fp16: true
-  # push_to_hub: False
-  # remove_unused_columns: False
+# train_args:
+#   output_dir: ${hydra:run.dir}/trainer
+#   per_device_train_batch_size: 32
+#   per_device_eval_batch_size: 32
+#   evaluation_strategy: "steps"
+#   eval_steps: 5000
+#   logging_steps: 5000
+#   gradient_accumulation_steps: 8
+#   num_train_epochs: 1
+#   weight_decay: 0.1
+#   warmup_steps: 1000
+#   lr_scheduler_type: "cosine"
+#   learning_rate: 0.0005
+#   save_steps: 5000
+#   fp16: true
+#   push_to_hub: False
+#   remove_unused_columns: False
