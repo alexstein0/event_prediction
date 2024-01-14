@@ -19,76 +19,58 @@ from tqdm import tqdm
 
 log = logging.getLogger(__name__)
 
-def load_dataset(data_file_name: str, data_dir_name: str="data"):
-    data_dir = os.path.join(get_original_cwd(), data_dir_name, data_file_name)
-    return get_data_from_file(data_dir)
 
 def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
     """
     Return a dataframe of the dataset specified in the config. For a given dataset
     first we will look for it on disk, and if it is not there we will download it.
+    Handles either .csv file or .tgz file with single .csv file inside.
     """
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
     _, ext = os.path.splitext(urlparse(cfg.url).path)
-    file_path = os.path.join(data_dir, cfg.name)
-    try:
-        # If we have the data on disk, load it
-        data = get_data_from_file(file_path)
-    except:
-        os.makedirs(data_dir, exist_ok=True)
-        data = download_data_from_url(cfg.url)
+    filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
+    if os.path.exists(filepath):
+        bytes = read_bytes(filepath)
+    else:
+        bytes = download_data_from_url(cfg.url)
+    if ext == ".tgz":
         if save_tar_to_disk:
-            save_raw_data(data, f"{file_path}{ext}")
-        if ext == ".tgz":
-            data = extract(data)
-        # pd.read_csv can take a filename or a file-like object, so we can directly pass our BytesIO data object.
-        data = pd.read_csv(data)
-        if save_csv_to_disk:
-            data.to_csv(f"{file_path}.csv", index=False)
-    return data
-
-
-def extract(data: io.BytesIO) -> io.BytesIO:
-    """Extract a tar.gz file to memory"""
-    log.info(f"Extracting tar.gz file...")
-    with tarfile.open(fileobj=data, mode='r:gz') as tar:
-        for member in tar.getmembers():
-            f = tar.extractfile(member)
-            if f is not None:
-                data = f.read()
-    return io.BytesIO(data)
+            os.makedirs(data_dir, exist_ok=True)
+            write_bytes(bytes, filepath)
+        bytes = extract(bytes)     
+    df = pd.read_csv(bytes)
+    if save_csv_to_disk:
+        os.makedirs(data_dir, exist_ok=True)
+        filepath = os.path.join(data_dir, f"{cfg.name}.csv")
+        df.to_csv(filepath, index=False)
+    return df
 
 
 def download_data_from_url(url: str) -> io.BytesIO:
-    try:
-        response = requests.get(url, stream=True)
-        file_size = int(response.headers.get("Content-Length", 0))
-        # Initialize a downloader with a progress bar
-        downloader = TqdmToLogger(
-            log,
-            iterable=response.iter_content(1024),
-            desc=f"Downloading {url}",
-            total=file_size,
-            unit="B",
-            unit_scale=True,
-            unit_divisor=1024,
-        )
-
-        data = io.BytesIO()
-        for chunk in downloader.iterable:
-            data.write(chunk)
-            # Update the progress bar manually
-            downloader.update(len(chunk))
-
-        # Reset the file object position to the start of the stream
-        data.seek(0)
-
-    except Exception as e:
-        log.error(f"Error: {e}")
+    """Download a file to memory without writing it to disk"""
+    response = requests.get(url, stream=True)
+    file_size = int(response.headers.get("Content-Length", 0))
+    # Initialize a downloader with a progress bar
+    downloader = TqdmToLogger(
+        log,
+        iterable=response.iter_content(1024),
+        desc=f"Downloading {url}",
+        total=file_size,
+        unit="B",
+        unit_scale=True,
+        unit_divisor=1024,
+    )
+    data = io.BytesIO()
+    for chunk in downloader.iterable:
+        data.write(chunk)
+        # Update the progress bar manually
+        downloader.update(len(chunk))
+    # Reset the file object position to the start of the stream
+    data.seek(0)
     return data
 
 
-def save_raw_data(data, filepath):
+def write_bytes(data: io.BytesIO, filepath: str) -> None:
     log.info(f"Saving to {filepath}")
     with open(filepath, "wb") as f:
         for byte in data:
@@ -97,40 +79,23 @@ def save_raw_data(data, filepath):
     data.seek(0)
 
 
-def get_data_from_binary(filepath: str):
-    with tarfile.open(filepath, "r:gz") as tar:
+def read_bytes(filepath: str) -> io.BytesIO:
+    with open(filepath, "rb") as file:
+        content = file.read()
+    return io.BytesIO(content)
+
+
+def extract(data: io.BytesIO) -> io.BytesIO:
+    """Extract a tar.gz file to memory"""
+    log.info(f"Extracting tar.gz file...")
+    with tarfile.open(fileobj=data, mode='r:gz') as tar:
+        num_files = len(tar.getmembers())
+        assert num_files == 1, f"Expected single csv file in tarball but got {num_files} files."
         for member in tar.getmembers():
             f = tar.extractfile(member)
             if f is not None:
-                content = f.read()
-    return content
-
-def get_data_from_file(filepath: str):
-    log.info(f"Checking {filepath} to load data...")
-    try:
-        # read csv
-        data = pd.read_csv(f"{filepath}.csv")
-    except:
-        try:
-            # read binary file
-            with tarfile.open(f"{filepath}.tgz", "r:gz") as tar:
-                for member in tar.getmembers():
-                    f = tar.extractfile(member)
-                    if f is not None:
-                        data = f.read()
-                        data = pd.read_csv(io.BytesIO(data))
-                        break
-        except:
-            try:
-                # read text file
-                with open(f"{filepath}.txt", "r:gz") as file:
-                    data = file.read()
-            except:
-                raise ValueError(
-                    f"input must be filename of type byte or csv"
-                )
-    log.info(f"Data load complete")
-    return data
+                data = f.read()
+    return io.BytesIO(data)
 
 
 def get_timestamps(X: pd.DataFrame,
@@ -382,29 +347,6 @@ def add_static_user_fields(
 
     return trainset, testset
 
-#
-# def prepare_dataset(cfg, data: pd.DataFrame) -> pd.DataFrame:
-#     """
-#     Return a preprocessed train-test split of the data.
-#     """
-#
-#     data = do_basic_preprocessing(data, cfg.consider_card)
-#
-#     # log.info("Splitting into train and test sets...")
-#     # trainset, testset = get_train_test_split(data, cfg.train_test_split_year)
-#
-#     # Monte note: I don't know why we're doing this. Isn't this bad practice?
-#     # log.info("Adding train transactions to test set...")
-#     # train_test_users, test_only_users = get_users(trainset, testset)
-#     # testset = add_train_transacations_to_testset(
-#     #     trainset, testset, train_test_users, cfg.sample_size, cfg.consider_card
-#     # )
-#     # log.info("Adding static user fields...")
-#     # trainset, testset = add_static_user_fields(
-#     #     trainset, testset, test_only_users, cfg.consider_card
-#     # )
-#
-#     return data
 
 def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data", sep='\n') -> str:
     """
@@ -435,13 +377,6 @@ def load_processed_dataset(cfg, processed_data_dir_name="data", sep='\n') -> Lis
     
     dataset = dataset.strip().split(sep)
     return dataset
-
-
-# def load_huggingface_dataset(cfg, processed_data_dir_name="data") -> Dataset:
-#     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
-#     filepath = os.path.join(data_dir, f"{cfg.name}.txt")
-#     dataset = datasets.load_dataset("text", data_files=filepath)
-#     return dataset
 
 
 def save_json(data: Dict, file_dir: str, file_name: str) -> str:
