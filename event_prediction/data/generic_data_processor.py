@@ -9,7 +9,7 @@ class GenericDataProcessor:
         self.categorical_columns = data_cfg.categorical_columns
         self.numeric_columns = data_cfg.numeric_columns
         self.binary_columns = data_cfg.binary_columns
-        self.static_numeric_columns = data_cfg.static_numeric_columns
+        self.static_numeric_columns = data_cfg.static_numeric_columns if data_cfg.static_numeric_columns is not None else []
 
         self.all_cols = []
         # self.all_cols.extend(self.index_columns)

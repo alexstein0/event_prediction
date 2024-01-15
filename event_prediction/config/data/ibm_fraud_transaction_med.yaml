@@ -12,27 +12,36 @@ index_columns:
   - "User"
   - "Card"
 
+# TODO:
+# Do feature engineering where we move things from absolute to relative to reduce vocab size
+# so instead of Merchant State, do something like a binary In_Frequent_State
 categorical_columns:
   - "Use Chip"
-  - "Merchant Name"
-#  - "Merchant City"
-#  - "Merchant State"
-  - "Zip"
+  - "Merchant State"
+  - "Errors?"
+  - "MCC"
+  # - "top_mcc"
+  # - "top_chip"
+  # - "Merchant Name"
+  # - "Merchant City"
+  # - "Zip"
+
 
 numeric_columns:
   - "Amount"
+  # - "Hour"
+  # - "total_minutes_from_last"
 #  - "Year"
 #  - "Month"
 #  - "Day"
-  - "Hour"
-  - "total_minutes_from_last"
 #  - "Time"
+
+static_numeric_columns:
+  # - name: "avg_dollar_amt"
+  #   parent: "Amount"
+  # - name: "std_dollar_amt"
+  #   parent: "Amount"
 
 binary_columns:
   - "Is Fraud?"
-  - "is_online"
-
-normalization_type:
-
-numeric_bucket_type: quantile
-numeric_bucket_amount: 10
+  # - "is_online"
