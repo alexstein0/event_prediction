@@ -13,10 +13,15 @@ index_columns:
 
 categorical_columns:
   - "Use Chip"
-  - "Merchant Name"
-#  - "Merchant City"
-#  - "Merchant State"
-  - "Zip"
+  - "Merchant State"
+  - "MCC"
+  - "Errors?"
+  - "top_mcc"
+  - "top_chip"
+  # - "Merchant Name"
+  # - "Merchant City"
+  # - "Zip"
+
 
 numeric_columns:
   - "Amount"
@@ -26,6 +31,12 @@ numeric_columns:
   - "Hour"
   - "total_minutes_from_last"
 #  - "Time"
+
+static_numeric_columns:
+  - name: "avg_dollar_amt"
+    parent: "Amount"
+  - name: "std_dollar_amt"
+    parent: "Amount"
 
 binary_columns:
   - "Is Fraud?"

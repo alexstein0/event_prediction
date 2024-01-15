@@ -74,6 +74,19 @@ class GenericTokenizer:
                     updated, _ = data_utils.bucket_numeric(
                         col, "uniform", self.buckets[col_name]
                     )  # eval always is uniform bc passing in buckets
+                    updated.fillna(0, inplace=True)
+                updated = updated.astype(str)
+                dataset[col_name] = updated
+
+            # Static data is aggregated from a parent column (like the avg of Amount) so categorize into the buckets of the parent
+            for static_col_dict in self.data_processor.static_numeric_columns:
+                col_name = static_col_dict["name"]
+                parent_name = static_col_dict["parent"]
+                col = dataset[col_name]
+                updated, _ = data_utils.bucket_numeric(
+                    col, "uniform", self.buckets[parent_name]
+                )
+                updated.fillna(0, inplace=True)
                 updated = updated.astype(str)
                 dataset[col_name] = updated
 

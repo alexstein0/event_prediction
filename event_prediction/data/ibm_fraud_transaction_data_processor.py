@@ -1,6 +1,6 @@
 from .generic_data_processor import GenericDataProcessor
 import pandas as pd
-from .data_utils import add_hours_total_minutes, convert_dollars_to_floats, add_minutes_from_last, add_is_online, remove_spaces
+from .data_utils import add_hours_total_minutes, convert_dollars_to_floats, add_minutes_from_last, add_is_online, remove_spaces, add_static_fields
 import numpy as np
 
 class IbmFraudTransactionDataProcessor(GenericDataProcessor):
@@ -29,6 +29,9 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
 
         # add sort dependent columns
         data = add_minutes_from_last(data, "total_minutes", self.index_columns)
+
+        # add static data columns (aggregate data per user)
+        data = add_static_fields(data, reference_df=data, groupby_columns=["User"])
 
         # clean up columns
         data = self.clean_columns(data)

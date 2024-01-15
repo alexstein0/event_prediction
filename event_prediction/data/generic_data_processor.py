@@ -9,12 +9,14 @@ class GenericDataProcessor:
         self.categorical_columns = data_cfg.categorical_columns
         self.numeric_columns = data_cfg.numeric_columns
         self.binary_columns = data_cfg.binary_columns
+        self.static_numeric_columns = data_cfg.static_numeric_columns
 
         self.all_cols = []
         # self.all_cols.extend(self.index_columns)
         self.all_cols.extend(self.categorical_columns)
         self.all_cols.extend(self.numeric_columns)
         self.all_cols.extend(self.binary_columns)
+        self.all_cols.extend([static_col["name"] for static_col in self.static_numeric_columns])
 
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         raise NotImplementedError()

@@ -6,12 +6,10 @@ import tarfile
 from typing import Dict, List, Tuple, Union
 from urllib.parse import urlparse
 
-import datasets
 import numpy as np
 import pandas as pd
 import requests
 import torch
-from datasets import Dataset
 from hydra.utils import get_original_cwd
 from omegaconf import DictConfig
 from torch.utils import data
@@ -237,115 +235,68 @@ def get_users(trainset: pd.DataFrame, testset: pd.DataFrame, user_col: str="User
     test_only_users = test_users.difference(train_users)
     return train_test_users, test_only_users
 
-#
-# def add_train_transacations_to_testset(
-#         trainset: pd.DataFrame,
-#         testset: pd.DataFrame,
-#         train_test_users: set,
-#         sample_size: int = 10,
-#         consider_card: bool = False,
-# ) -> pd.DataFrame:
-#     """
-#     Add a sampling of transactions from the trainset for each trainset user that also
-#     appears in the testset.
-#     """
-#     groupby_columns = ["User", "Card"] if consider_card else ["User"]
-#     sort_columns = (
-#         ["User", "Card", "total_minutes"]
-#         if consider_card
-#         else ["User", "total_minutes"]
-#     )
-#     # Get the indices of the last y-1 transactions for each user in dataframe x
-#     get_sample_indices = lambda x, y: x.index[-(y - 1):]
-#
-#     test_extra_indices = (
-#         trainset.loc[trainset["User"].isin(train_test_users)]
-#             .groupby(groupby_columns)
-#             .apply(get_sample_indices, sample_size)
-#     )
-#     test_extra_indices = test_extra_indices.explode()
-#     testset = pd.concat([trainset.loc[test_extra_indices], testset])
-#     testset.sort_values(by=sort_columns, inplace=True)
-#     return testset
+
+def concatenated_col(df: pd.DataFrame, cols_to_concat: List[str]) -> pd.Series:
+    """Create a Series (single column) that is a concatenation of selected columns in a df."""
+    return df[cols_to_concat].astype(str).apply('_'.join, axis=1)
 
 
-def add_static_user_fields(
-        trainset: pd.DataFrame,
-        testset: pd.DataFrame,
-        test_only_users: set,
-        consider_card: bool = False,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def add_static_fields(df: pd.DataFrame, reference_df: pd.DataFrame=None, groupby_columns=["User", "Card"]) -> pd.DataFrame:
+    # reference_df is historic data that can be accessed at inference time. At train time, we can we can simply
+    # use reuse the trainset as the reference dataset so that we add static values for all users in the trainset.
+    user_static_values = get_user_level_static_values(reference_df, groupby_columns)
+    
+    # Add the static values for the users that appeared in the reference dataset. Since we are using a left join, this will
+    # add NaNs for users that did not appear in the reference dataset. (Users that appeared in the reference dataset but not
+    # in the current dataset are ignored by left join.)
+    df = df.merge(user_static_values, on=groupby_columns, how="left")
+    
+    # Fill in missing user-level values with dataset-level values
+    dataset_static_values = get_dataset_level_static_values(reference_df)
+    df.fillna(value=dataset_static_values, inplace=True)
+
+    return df
+    
+
+def get_user_level_static_values(df: pd.DataFrame, groupby_columns=["User", "Card"]) -> pd.DataFrame:
     """
-    Add "static field" columns to the dataset. This is aggregate data that is added
-    to every transaction for a given user.
+    Computes static values from a DataFrame aggregated by the groupby columns (e.g. ["User", "Card"]).
     The columns to add are:
     1. Average dollar amount of the user
     2. Standard deviation dollar amount of the user
     3. Most frequent MCC
     4. Most frequent Use Chip
+    Args:
+        df (pd.DataFrame): The DataFrame containing the data.
+        groupby_columns (List[str]): The columns to group by.
+    Returns:
+        pd.DataFrame: A DataFrame containing the static values, with one row per groupby combination. (e.g. one row per user)
     """
-    get_top_item = lambda x: x.mode().iloc[0]
 
-    # One row per train-set user
-    groupby_columns = ["User", "Card"] if consider_card else ["User"]
-    sort_columns = (
-        ["User", "Card", "total_minutes"]
-        if consider_card
-        else ["User", "total_minutes"]
-    )
-    train_static_data = trainset.groupby(groupby_columns).agg(
+    assert pd.api.types.is_numeric_dtype(df['Amount']), f"Expected 'Amount' col to have numeric dtype but got: {df['Amount'].dtype}"
+    get_most_frequent_item = lambda x: x.mode().iloc[0]
+    grouped_static_df = df.groupby(groupby_columns).agg(
         avg_dollar_amt=("Amount", "mean"),
         std_dollar_amt=("Amount", "std"),
-        top_mcc=("MCC", get_top_item),
-        top_chip=("Use Chip", get_top_item),
+        top_mcc=("MCC", get_most_frequent_item),
+        top_chip=("Use Chip", get_most_frequent_item),
     )
+    return grouped_static_df
 
-    # Gather dataset-level values for use in filling NaNs for individual users
-    dataset_amt_avg = trainset["Amount"].mean()
-    dataset_amt_std = trainset["Amount"].std()
-    dataset_top_mcc = trainset["MCC"].mode().iloc[0]
-    dataset_top_chip = trainset["Use Chip"].mode().iloc[0]
+
+def get_dataset_level_static_values(df: pd.DataFrame) -> Dict:
+    """Gather dataset-level values"""
+    dataset_amt_avg = df["Amount"].mean()
+    dataset_amt_std = df["Amount"].std()
+    dataset_top_mcc = df["MCC"].mode().iloc[0]
+    dataset_top_chip = df["Use Chip"].mode().iloc[0]
     dataset_static_values = {
         "avg_dollar_amt": dataset_amt_avg,
         "std_dollar_amt": dataset_amt_std,
         "top_mcc": dataset_top_mcc,
         "top_chip": dataset_top_chip,
     }
-
-    # Replace NaNs
-    train_static_data.fillna(value=dataset_static_values, inplace=True)
-
-    # Add static data columns to trainset
-    trainset = trainset.join(train_static_data, on="User")
-
-    # For testset, operate on the principle that at inference time we can lookup user-level
-    # static data from some previous transactions. For testset users that are not in the
-    # trainset (i.e. new users with no previous transactions), we can use the dataset-level
-    # values. Here we create a dataframe with those dataset-level values repeated enough
-    # times to cover every row with a not-in-trainset user.
-    test_only_user_indices = list(test_only_users)
-    dataset_values_for_testset = pd.DataFrame(
-        {
-            "avg_dollar_amt": np.repeat(dataset_amt_avg, len(test_only_users)),
-            "std_dollar_amt": np.repeat(dataset_amt_std, len(test_only_users)),
-            "top_mcc": np.repeat(dataset_top_mcc, len(test_only_users)),
-            "top_chip": np.repeat(dataset_top_chip, len(test_only_users)),
-        },
-        index=test_only_user_indices,
-    )
-
-    # Now we have static data for every user in the trainset and all all the additional
-    # testset users not apearing in the trainset. If we  concat this we have static data
-    # for all users that might possibly appear in the testset (a superset of those users).
-    test_static_data = pd.concat([train_static_data, dataset_values_for_testset])
-
-    # Add static data columns to trainset
-    testset = testset.join(test_static_data, on="User")
-
-    trainset.sort_values(by=sort_columns, inplace=True)
-    testset.sort_values(by=sort_columns, inplace=True)
-
-    return trainset, testset
+    return dataset_static_values
 
 
 def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data", sep='\n') -> str:
