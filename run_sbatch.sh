@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=event-prediction                            # Specify a name for your job
-#SBATCH --output=slurm-logs/out-event-prediction-%j.log        # Specify the output log file
-#SBATCH --error=slurm-logs/err-event-prediction-%j.log         # Specify the error log file
+#SBATCH --job-name=event_prediction                            # Specify a name for your job
+#SBATCH --output=slurm-logs/out-event_prediction-%j.log        # Specify the output log file
+#SBATCH --error=slurm-logs/err-event_prediction-%j.log         # Specify the error log file
 #SBATCH --nodes=1                                             # Number of nodes to request
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1                                     # Number of CPU cores per task
@@ -12,13 +12,13 @@
 
 
 # Project setup
-proj_root="/vulcanscratch/mhoover4/code/event-prediction"
+proj_root="/vulcanscratch/mhoover4/code/event_prediction"
 
 # Load any required modules or activate your base environment here if necessary
 source $proj_root/.venv/bin/activate
 
-python $proj_root/process_data.py data=ibm_fraud_transaction_med
-python $proj_root/pretrain.py     data=ibm_fraud_transaction_med
+# python $proj_root/process_data.py data=ibm_fraud_transaction_med
+# python $proj_root/pretrain.py     data=ibm_fraud_transaction_med
 
-# python $proj_root/process_data.py data=ibm_fraud_transaction
-# python $proj_root/pretrain.py     data=ibm_fraud_transaction
+python $proj_root/process_data.py data=ibm_fraud_transaction
+python $proj_root/pretrain.py     data=ibm_fraud_transaction

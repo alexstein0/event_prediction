@@ -14,7 +14,7 @@ optim: AdamW # accepts AdamW
 lr: 5e-4
 lr_scheduler: cosine
 warmup_steps: 1000
-epochs: 1
+epochs: 100
 val_checks_per_epoch: 1
 gradient_clip_val: 1.0
 ckpt_path: ${hydra:run.dir}/ckpt
