@@ -21,7 +21,7 @@ If you want to save a csv version of the dataset to disk, run:
 python process_data.py save_csv=True
 ```
 
-To get a quick look at the dataset, open `dataset_visualization.ipynb`
+To get a quick look at the dataset, open `dataset_visualization.ipynb` 
 
 ## Conduct Pretraining
 
