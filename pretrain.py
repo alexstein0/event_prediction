@@ -18,7 +18,9 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"GPT-2 size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
 
-    tokenized_string_dataset = data_utils.load_processed_dataset(cfg.data, cfg.processed_data_dir)
+    dataset = data_utils.load_processed_dataset(cfg.processed_data_dir, cfg.data.name)
+    tokenized_string_dataset = dataset['text']
+    # tokenized_string_dataset_labels = dataset['label']
     assert isinstance(tokenized_string_dataset, list), f"Expected list of string tokens, instead got {type(tokenized_string_dataset)}"
     log.info(f"Total tokens in dataset: {len(tokenized_string_dataset)}")
     log.info(f"Unique tokens in dataset: {len(set(tokenized_string_dataset))}")
@@ -32,6 +34,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Total tokens in dataloaders (n_batches * batch_sz * context_len): {(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.context_length}")
 
     trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
+    exit()
     weights_filepath = trainer.train()
     
     metrics = {}

@@ -21,7 +21,8 @@ def main_process_data(cfg, setup=None) -> Dict:
 
     log.info("Pretokenizing...")
     start_time = time.time()
-    wordified_data, labels = tokenizer.pretokenize(normed_data)
+    # wordified_data, indexes, labels = tokenizer.pretokenize(normed_data)
+    wordified_data = tokenizer.pretokenize(normed_data)
     log.info(f"{f'Time taken for pretokenize:':40s} {time.time() - start_time:5.3f} seconds")
 
     log.info("Applying tokenization model...")
@@ -31,12 +32,13 @@ def main_process_data(cfg, setup=None) -> Dict:
 
     log.info("Postprocessing...")
     start_time = time.time()
-    post_processed_data = tokenizer.post_process(tokenized_data, labels)
+    post_processed_data = tokenizer.post_process(tokenized_data)
     log.info(f"{f'Time taken for post_process:':40s} {time.time() - start_time:5.3f} seconds")
 
     log.info("Saving processed dataset...")
     start_time = time.time()
-    data_utils.save_processed_dataset(post_processed_data, cfg.data, cfg.processed_data_dir)
+    dataset = data_utils.create_dataset(post_processed_data)
+    data_utils.save_processed_dataset(dataset, cfg.processed_data_dir, cfg.data.name)
     log.info(f"{f'Time taken for save_processed_dataset:':40s} {time.time() - start_time:5.3f} seconds")
 
     tokenizer.training_complete()

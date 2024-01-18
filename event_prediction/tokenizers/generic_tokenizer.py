@@ -1,4 +1,7 @@
 import logging
+
+import pandas as pd
+
 from event_prediction import data_utils, get_data_processor
 import torch
 from typing import Set, List, Dict
@@ -14,6 +17,7 @@ class GenericTokenizer:
             "eos_token": "[EOS]",
             "unk_token": "[UNK]",
         }
+
         self.tokenizer_type = data_cfgs.data_processor
         self.data_processor = get_data_processor(data_cfgs)
         self.numeric_bucket_type = tokenizer_cfgs.numeric_bucket_type
@@ -63,7 +67,7 @@ class GenericTokenizer:
         #     data[self.numeric_columns].replace(updated[self.numeric_columns])
 
         if self.numeric_bucket_type is not None:
-            for col_name in self.data_processor.numeric_columns:
+            for col_name in self.data_processor.get_numeric_columns():
                 col = dataset[col_name]
                 if self.is_train:
                     updated, buckets = data_utils.bucket_numeric(
@@ -79,7 +83,7 @@ class GenericTokenizer:
                 dataset[col_name] = updated
 
             # Static data is aggregated from a parent column (like the avg of Amount) so categorize into the buckets of the parent
-            for static_col_dict in self.data_processor.static_numeric_columns:
+            for static_col_dict in self.data_processor.get_static_numeric_columns():
                 col_name = static_col_dict["name"]
                 parent_name = static_col_dict["parent"]
                 col = dataset[col_name]
@@ -111,11 +115,15 @@ class GenericTokenizer:
         """
         raise NotImplementedError()
 
-    def post_process(self, dataset, labels=None) -> List[str]:
+    def post_process(self, dataset: pd.DataFrame) -> pd.DataFrame:
+        # todo consider splitting into training/test sets
         raise NotImplementedError()
 
     def training_complete(self):
         self.is_initialized = True
+
+    def get_token_cols(self):
+        raise NotImplementedError()
 
     def _encode_val(self, data: str) -> int:
         return self.token_to_id.get(data, self.unk_token_id)  # todo (unknown tokens?)
@@ -142,12 +150,13 @@ class GenericTokenizer:
             output.append(val)
         return output
 
-    def define_tokenization(self, dataset: Set[str]):
+    def add_special_tokens(self):
         for key, val in self.special_tokens_dict.items():
             #  todo make preordered?
             self.add_token(val)
         self.update_special_token_ids()
 
+    def add_all_tokens(self, dataset: Set[str]):
         for val in dataset:
             self.add_token(val)
 
@@ -213,3 +222,6 @@ class GenericTokenizer:
         log.info(f"Loading tokenizer from {file_name}.json")
         data = data_utils.read_json(tokenizer_dir, f"{file_name}.json")
         self.load(data)
+
+    def tokenize(self, dataset):
+        raise NotImplementedError()

@@ -1,3 +1,7 @@
+defaults:
+  - default_data
+  - _self_
+
 name: ibm_fraud_transaction_med
 
 data_processor: ibm_fraud_transaction

@@ -14,6 +14,7 @@ from hydra.utils import get_original_cwd
 from omegaconf import DictConfig
 from torch.utils import data
 from tqdm import tqdm
+from datasets import Dataset
 
 log = logging.getLogger(__name__)
 
@@ -205,20 +206,28 @@ def remove_spaces(X: pd.Series) -> pd.Series:
     return X.str.replace(' ', '')
 
 
-def add_index_tokens(dataset: pd.DataFrame, labels: pd.DataFrame) -> (pd.DataFrame, List[str]):
+def get_prepended_tokens(labels: pd.DataFrame) -> (pd.DataFrame, List[str]):
     special_tokens_added = []
     index_tokens = []
-    dataset.reset_index(drop=True, inplace=True)
-    labels.reset_index(drop=True, inplace=True)
     for token in labels.columns:
         tok_locs = labels[token][labels[token] != labels[token].shift()].copy().astype(str)
         tok_locs[:] = token
         tok_locs = tok_locs.to_frame()
-        tok_locs.columns = ["spec"]
+        tok_locs.columns = ["prepended_tokens"]
         index_tokens.append(tok_locs)
         special_tokens_added.append(token)
-    combined = pd.concat([*index_tokens, dataset], axis=0).sort_index().reset_index(drop=True)
+    combined = pd.concat(index_tokens, axis=0)
+    combined = combined.groupby(combined.index)["prepended_tokens"].apply(list)
     return combined, special_tokens_added
+
+
+def interweave_series(datasets: List[pd.Series]) -> (pd.DataFrame):
+    for ds in datasets:
+        ds.reset_index(drop=True, inplace=True)
+        ds.name = ["tokens"]
+
+    return pd.concat([datasets], axis=0).sort_index().reset_index(drop=True)
+
 
 # def get_train_test_split(X: pd.DataFrame, split_year: int = 2018) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     """Return a train-test split of the data based on a single year cutoff"""
@@ -299,38 +308,55 @@ def get_dataset_level_static_values(df: pd.DataFrame) -> Dict:
     return dataset_static_values
 
 
-def save_processed_dataset(dataset: List[str], cfg, processed_data_dir_name="data", sep='\n') -> str:
+def create_dataset(df: pd.DataFrame) -> Dataset:
+    dataset = Dataset.from_pandas(df)
+    return dataset
+
+def save_processed_dataset(dataset: Dataset, processed_data_dir_name: str, processed_data_file_name: str) -> str:
     """
     Save list of strings to a text file. They are saved with a newline seperator between
     each string in the list by default.
+    the file is saved as a list of jsons where the keys are labels (such as 'text' and 'label')
     """
     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
-    filepath = os.path.join(data_dir, f"{cfg.name}.txt")
+    filepath = os.path.join(data_dir, f"{processed_data_file_name}")
     os.makedirs(data_dir, exist_ok=True)
+    # with open(filepath, "w") as outfile:
+    #     json.dump(list_of_dicts, outfile)
+    dataset.save_to_disk(filepath)
 
-    if sep is not None:
-        dataset = [line + sep for line in dataset]
+    # keys = dataset.keys()
+    # values_list = zip(*(dataset[key] for key in keys))
+    #
+    # list_of_dicts = [dict(zip(keys, values)) for values in values_list]
 
-    with open(filepath, "w") as f:
-        f.writelines(dataset)
+    # return save_json(dataset, processed_data_dir_name, f"{processed_data_file_name}.json")
     return filepath
 
 
-def load_processed_dataset(cfg, processed_data_dir_name="data", sep='\n') -> List[str]:
+def load_processed_dataset(processed_data_dir_name: str, processed_data_file_name: str) -> pd.DataFrame:
     """
     Load the contents of a text file to a single string, with no newlines or 
     whitespace removed.
     """
     data_dir = os.path.join(get_original_cwd(), processed_data_dir_name)
-    filepath = os.path.join(data_dir, f"{cfg.name}.txt")
-    with open(filepath, "r") as f:
-        dataset = f.read()
-    
-    dataset = dataset.strip().split(sep)
-    return dataset
+    filepath = os.path.join(data_dir, f"{processed_data_file_name}")
+
+    dataset = Dataset.load_from_disk(filepath)
+
+    # list_of_dicts = read_json(processed_data_dir_name, f"{processed_data_file_name}.json")
+    # # todo make this more generic
+    # texts = []
+    # labels = []
+    # for i in list_of_dicts:
+    #     texts.append(i['text'])
+    #     labels.append(i['label'])
+    # return {'text': texts, 'label': labels}
+    return dataset.to_pandas()
 
 
-def save_json(data: Dict, file_dir: str, file_name: str) -> str:
+def save_json(data: [Dict | List[Dict]], file_dir: str, file_name: str) -> str:
+
     file_dir = os.path.join(get_original_cwd(), file_dir)
     filepath = os.path.join(file_dir, file_name)
     os.makedirs(file_dir, exist_ok=True)
@@ -339,7 +365,9 @@ def save_json(data: Dict, file_dir: str, file_name: str) -> str:
         json.dump(data, outfile)
     return filepath
 
-def read_json(file_dir: str, file_name: str) -> Dict:
+
+def read_json(file_dir: str, file_name: str) -> Dict | List[Dict]:
+
     filepath = os.path.join(get_original_cwd(), file_dir, file_name)
     assert os.path.exists(filepath), f"File not found at {filepath}"
     assert os.path.getsize(filepath) > 0, f"File is empty at {filepath}"
