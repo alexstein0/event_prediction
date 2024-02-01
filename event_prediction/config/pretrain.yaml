@@ -3,6 +3,7 @@
 # The other config files this relies on, specified in the format "<folder>: <file>[.yaml]"
 defaults:
   - data: ibm_fraud_transaction_small
+  - impl: torch-default
   - tokenizer: composite
   - model: gpt2
   - wandb: none

@@ -20,7 +20,7 @@ class Composite(GenericTokenizer):
     #
     #     return all_tokens, index, labels
 
-    def pretokenize(self, dataset):
+    def pretokenize(self, dataset: pd.DataFrame) -> pd.DataFrame:
         data_col = dataset[self.data_processor.get_data_cols()]
         all_tokens = data_utils.concat_dataframe_cols(data_col)
         all_tokens.name = "tokens"
@@ -34,16 +34,16 @@ class Composite(GenericTokenizer):
         return pd.concat([indexes, all_tokens, labels], axis=1)
 
 
-    def model(self, dataset):
-        # todo check if this is right way to do composite? words are the concat of the whole sentence
-        # this is effectively a "word level" tokenizer.  most of the work is done by the pretokenizer and this simply maps inputs to IDS
-        self.add_special_tokens()
-        for col_name in self.get_token_cols():
-            self.add_all_tokens(set(dataset[col_name].values.tolist()))
-        return dataset
+    # def model(self, dataset):
+    #     # todo check if this is right way to do composite? words are the concat of the whole sentence
+    #     # this is effectively a "word level" tokenizer.  most of the work is done by the pretokenizer and this simply maps inputs to IDS
+    #     self.add_special_tokens()
+    #     for col_name in self.get_token_cols():
+    #         self.add_all_tokens(set(dataset[col_name].values.tolist()))
+    #     return dataset
 
 
-    def post_process(self, dataset) -> pd.DataFrame:
+    def post_process(self, dataset: pd.DataFrame) -> pd.DataFrame:
         # todo move this to pretokenize? (see atomic.pretokenize)
         # indexes = dataset[self.data_processor.get_index_columns()]
         #

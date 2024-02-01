@@ -47,7 +47,7 @@ static_numeric_columns:
 
 binary_columns:
 #  - "is_online"
-  - "Is Fraud"
+  - "Is Fraud?"
 
 label_columns:
-#  - "Is Fraud?"
+  - "Is Fraud?"

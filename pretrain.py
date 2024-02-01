@@ -8,8 +8,9 @@ log = logging.getLogger(__name__)
 
 
 def main_pretrain(cfg, setup=None) -> Dict:
+    tokenized_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
     tokenizer = event_prediction.get_tokenizer(cfg.tokenizer, cfg.data)
-    tokenizer.load_vocab_from_file(cfg.data.name, cfg.tokenizer_dir)
+    tokenizer.load_vocab_from_file(tokenized_name, cfg.tokenizer_dir)
     model = model_utils.get_model(
         cfg.model, tokenizer
     )
@@ -18,8 +19,12 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"GPT-2 size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
 
-    dataset = data_utils.load_processed_dataset(cfg.processed_data_dir, cfg.data.name)
-    tokenized_string_dataset = dataset['text']
+    dataset = data_utils.load_processed_dataset(cfg.processed_data_dir, tokenized_name)
+    # tokenized_string_dataset = dataset['text'].to_list()
+    tokenized_string_dataset = []
+    for x in dataset['text'].to_list():
+        tokenized_string_dataset.extend(x.split())
+    # todo doesnt work for atomic because it doesnt tokenize separately?
     # tokenized_string_dataset_labels = dataset['label']
     assert isinstance(tokenized_string_dataset, list), f"Expected list of string tokens, instead got {type(tokenized_string_dataset)}"
     log.info(f"Total tokens in dataset: {len(tokenized_string_dataset)}")
@@ -34,7 +39,6 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Total tokens in dataloaders (n_batches * batch_sz * context_len): {(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.context_length}")
 
     trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
-    exit()
     weights_filepath = trainer.train()
     
     metrics = {}

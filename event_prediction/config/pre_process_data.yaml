@@ -3,6 +3,7 @@
 # Settings are separated into case, attack analysis
 defaults:
   - data: ibm_fraud_transaction_small
+  - impl: torch-default
   - tokenizer: composite
   - wandb: none
   - _self_

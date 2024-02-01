@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import List
 
-from .data_utils import convert_to_str, remove_spaces
+from .data_utils import convert_to_str, remove_spaces, convert_to_bool
 
 class GenericDataProcessor:
     def __init__(self, data_cfg):
@@ -42,7 +42,7 @@ class GenericDataProcessor:
             elif col_name in self.get_categorical_columns():
                 data[col_name] = convert_to_str(data[col_name])
             elif col_name in self.get_binary_columns():
-                data[col_name] = data[col_name].astype('bool')
+                data[col_name] = convert_to_bool(data[col_name])
             else:
                 pass
                 # print(f"Ignoring column {col_name}")

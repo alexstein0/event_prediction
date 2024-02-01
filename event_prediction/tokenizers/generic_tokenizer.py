@@ -53,7 +53,7 @@ class GenericTokenizer:
     def eval(self):
         self.is_train = False
 
-    def normalize(self, dataset):
+    def normalize(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """Normalizes all the data in the table
         This includes:
             1. bucketing numeric values if doing that (maybe preprocessing?)
@@ -96,7 +96,7 @@ class GenericTokenizer:
 
         return dataset
 
-    def pretokenize(self, dataset):
+    def pretokenize(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """This is where the different tokenizers will convert the tables into 'sentences' of 'words'
         The words outputted from here can be:
             1. Composite tokens with goal of predicting next composite token
@@ -106,14 +106,18 @@ class GenericTokenizer:
         """
         raise NotImplementedError()
 
-    def model(self, dataset):
+    def model(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """Tokenization here consists of taking the previous 'sentences' and doing actual tokenization such as:
         1. BPE
         2. Word Piece
         3. Word Level
         4. Unigram
         """
-        raise NotImplementedError()
+        # raise NotImplementedError()
+        self.add_special_tokens()
+        for col_name in self.get_token_cols():
+            self.add_all_tokens(set(dataset[col_name].values.tolist()))
+        return dataset
 
     def post_process(self, dataset: pd.DataFrame) -> pd.DataFrame:
         # todo consider splitting into training/test sets

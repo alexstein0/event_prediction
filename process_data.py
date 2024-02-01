@@ -14,6 +14,9 @@ def main_process_data(cfg, setup=None) -> Dict:
     data = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, cfg.save_tar, cfg.save_csv)
     tokenizer = event_prediction.get_tokenizer(cfg.tokenizer, cfg.data)
 
+    # todo
+    tokenized_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
+
     log.info("Normalizing...")
     start_time = time.time()
     normed_data = tokenizer.normalize(data)
@@ -38,14 +41,14 @@ def main_process_data(cfg, setup=None) -> Dict:
     log.info("Saving processed dataset...")
     start_time = time.time()
     dataset = data_utils.create_dataset(post_processed_data)
-    data_utils.save_processed_dataset(dataset, cfg.processed_data_dir, cfg.data.name)
+    data_utils.save_processed_dataset(dataset, cfg.processed_data_dir, tokenized_name)  # todo save with tokenizer type
     log.info(f"{f'Time taken for save_processed_dataset:':40s} {time.time() - start_time:5.3f} seconds")
 
     tokenizer.training_complete()
 
     log.info("Saving tokenizer...")
     start_time = time.time()
-    tokenizer.save(cfg.data.name, cfg.tokenizer_dir)
+    tokenizer.save(tokenized_name, cfg.tokenizer_dir)
     log.info(f"{f'Time taken for save:':40s} {time.time() - start_time:5.3f} seconds")
 
     metrics = tokenizer.get_metrics()

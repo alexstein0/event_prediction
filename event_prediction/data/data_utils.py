@@ -144,6 +144,15 @@ def convert_to_str(X: pd.Series) -> pd.Series:
     X = X.astype(str)
     return X
 
+def convert_to_bool(X: pd.Series) -> pd.Series:
+    rep = {'yes': True,
+           'no': False,
+           'true': True,
+           'false': False}
+    X = X.str.lower()
+    X = X.replace(rep)
+    return X.astype('bool')
+
 def convert_dollars_to_floats(X: pd.Series, log_scale: bool = True) -> pd.Series:
     X = X.str.replace("$", "").astype(float)
     if log_scale:
@@ -176,8 +185,8 @@ def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
         log.info("No normalization applied")
     return df
 
-def concat_dataframe_cols(df: pd.DataFrame) -> pd.Series:
-    return df.astype(str).apply('_'.join, axis=1)
+def concat_dataframe_cols(df: pd.DataFrame, separator: str= "_") -> pd.Series:
+    return df.astype(str).apply(separator.join, axis=1)
 
 def add_special_tabular_tokens(df: pd.DataFrame, add_col_sep: str='COL', add_row_sep: str='ROW') -> pd.DataFrame:
     output = pd.DataFrame()
