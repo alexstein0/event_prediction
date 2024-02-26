@@ -26,10 +26,6 @@ early_termination:
   budget: 3 # budget in hours
   loss_threshold: 6.0 # modify this for non-xent losses
 
-# Batch size settings:
-# batch_size: This is handled in train after commit 982a4d33cd7f79a48b691114ae78f6ad1cdbee69
-microbatch_size: 128 # dont make it larger than batch_size...
-
 # Basic compute settings
 threads: 32 # maximal number of cpu dataloader workers used per GPU, this value will never exceed num_gpus * num_physical threads
 # Dataloader multiprocessing
@@ -80,27 +76,5 @@ add_env_variables:
 # export LD_PRELOAD=/home/mingfeim/packages/gperftools-2.8/install/lib/libtcmalloc.so
 
 example_token_limit: 30 # never generate more example tokens than this
-# example_prompts:
-#   - "Oh, distinctly I remember, it was in the bleak"
-#   - "The capital of Germany is"
-#   - "The Westphalian peace ended the"
-#   - "Hi! My name is"
-#   - "In the place where we were born,"
-#   - "Time is a"
 
-# example_prompts:
-#   - "System.out.println("
-#   - "public class "
-#   - "public static void main"
-#   - "/* print hello world */"
-#   - "System.out.println(2);"
-#   - "for (let i = 0; i < myarray.length; i++) {"
-example_prompts:
-    - "3 + 3 = "
-    - "44 + 56 = "
-    - "003 + 003 = "
-    - "070 + 094 = "
-    - "345 + 324 = "
-    - "598 + 527 = "
-    - "1234 + 4321 = "
-    - "94633 + 91826 = "
+is_mac: False

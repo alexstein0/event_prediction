@@ -108,7 +108,11 @@ def system_startup(cfg):
         log.info(os.environ)
 
     # allowed_cpus_available = min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
-    allowed_cpus_available = 1
+    if cfg.impl.is_mac:
+        allowed_cpus_available = 1  # when running on mac
+    else:
+        allowed_cpus_available = min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
+    # cfg.impl["num_threads"] = allowed_cpus_available
     # Distributed launch?
     if "LOCAL_RANK" in os.environ:
         torch.distributed.init_process_group(backend=cfg.impl.dist_backend)

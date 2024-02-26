@@ -14,13 +14,13 @@ class GenericDataProcessor:
 
         all_cols = []
         all_cols.extend(self._index_columns)
-        all_cols.extend(self._label_columns)
         all_cols.extend(self._categorical_columns)
         all_cols.extend(self._numeric_columns)
         all_cols.extend(self._binary_columns)
         all_cols.extend([static_col["name"] for static_col in self._static_numeric_columns])
+        all_cols.extend(self._label_columns)
         # self._all_cols = list(set(self._all_cols)) # does not consider ordering of set
-        self._all_cols =[]
+        self._all_cols = []
         for x in all_cols:
             if x not in self._all_cols:
                 self._all_cols.append(x)

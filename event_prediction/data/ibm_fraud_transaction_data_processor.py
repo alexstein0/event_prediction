@@ -3,6 +3,7 @@ import pandas as pd
 from .data_utils import add_hours_total_minutes, convert_dollars_to_floats, add_minutes_from_last, add_is_online, remove_spaces, add_static_fields
 import numpy as np
 
+
 class IbmFraudTransactionDataProcessor(GenericDataProcessor):
     def __init__(self, data_cfg):
         super(IbmFraudTransactionDataProcessor, self).__init__(data_cfg)

@@ -10,15 +10,13 @@ import datasets
 
 from event_prediction import data_utils, get_data_processor
 import numpy as np
-# import evaluate
-
-# accuracy = evaluate.load("accuracy")
+import multiprocessing
 
 log = logging.getLogger(__name__)
 
 
 def main_pretrain(cfg, setup=None) -> Dict:
-    tokenized_name = "Alex" #f"{cfg.data.name}_{cfg.tokenizer.name}"
+    tokenized_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
     path = os.path.join(get_original_cwd(), cfg.tokenizer_dir, tokenized_name)
     tokenizer = AutoTokenizer.from_pretrained(path, use_fast=True)
 
@@ -45,7 +43,11 @@ def main_pretrain(cfg, setup=None) -> Dict:
             return new_ex
 
         dataset = dataset.map(lambda example: example, batched=True)
-        dataset = dataset.map(concat_columns, num_proc=1)
+        try:
+            threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
+        except:
+            threads = 1
+        dataset = dataset.map(concat_columns, num_proc=threads)
         dataset = dataset.select_columns("text")
     else:
         pass
@@ -81,7 +83,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
                       list), f"Expected list of string tokens, instead got {type(tokenized_string_dataset)}"
     log.info(f"Total tokens in dataset: {len(tokenized_string_dataset)}")
     log.info(f"Unique tokens in dataset: {len(set(tokenized_string_dataset))}")
-    log.info(f"Num tokens not in vocab: {len(set(tokenized_string_dataset) - tokenizer.vocab)}")
+    log.info(f"Num tokens not in vocab: {len(set(tokenized_string_dataset)) - len(tokenizer.vocab)}")
 
     train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
     log.info(f"Num train loader batches: {len(train_loader)}")
@@ -94,10 +96,8 @@ def main_pretrain(cfg, setup=None) -> Dict:
     trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
 
     log.info("TRAINING")
-    trainer.train()
-    model_path = os.path.join(get_original_cwd(), "model", "ALEX")
+    model_path = trainer.train()
     log.info(f"Saving to {model_path}")
-    trainer.save_model(model_path)
 
     metrics = {}
     return metrics
