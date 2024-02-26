@@ -16,12 +16,13 @@ log = logging.getLogger(__name__)
 
 
 def main_pretrain(cfg, setup=None) -> Dict:
-    tokenized_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
+    # tokenized_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
+    tokenized_name = cfg.tokenizer_name
     path = os.path.join(get_original_cwd(), cfg.tokenizer_dir, tokenized_name)
+    log.info(f"Loading tokenizer from: {path}")
     tokenizer = AutoTokenizer.from_pretrained(path, use_fast=True)
 
-    preprocess_data = True
-    if preprocess_data:
+    if cfg.preprocess_data_name is None:
         dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, False, False)
         data_processor = get_data_processor(cfg.data)
 
@@ -50,10 +51,11 @@ def main_pretrain(cfg, setup=None) -> Dict:
         dataset = dataset.map(concat_columns, num_proc=threads)
         dataset = dataset.select_columns("text")
     else:
-        pass
-        # todo load data
-    # dataset = dataset.map(lambda example: tokenizer(example["text"]), batched=True)
+        data_dir = os.path.join(get_original_cwd(), cfg.data_dir)
+        filepath = os.path.join(data_dir, cfg.preprocess_data_name)
+        dataset = datasets.load_from_disk(filepath)
 
+    # dataset = dataset.map(lambda example: tokenizer(example["text"]), batched=True)
     model = model_utils.get_model(
         cfg.model, tokenizer
     )
