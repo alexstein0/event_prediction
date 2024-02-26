@@ -76,4 +76,3 @@ class GenericDataProcessor:
 
     def get_binary_columns(self):
         return self._binary_columns
-

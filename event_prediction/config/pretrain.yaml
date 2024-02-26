@@ -11,6 +11,7 @@ defaults:
   - override hydra/job_logging: custom
 
 base_dir: outputs
+data_dir: data_raw
 processed_data_dir: data
 tokenizer_dir: tokenizer
 

@@ -5,6 +5,9 @@ import os
 import tarfile
 from typing import Dict, List, Tuple, Union
 from urllib.parse import urlparse
+from datasets import DatasetDict, Dataset
+from transformers import AutoTokenizer
+import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -14,9 +17,14 @@ from hydra.utils import get_original_cwd
 from omegaconf import DictConfig
 from torch.utils import data
 from tqdm import tqdm
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 
 log = logging.getLogger(__name__)
+
+def get_huggingface_dataset(cfg):
+    data_files = {"train": cfg.url}
+    dataset = load_dataset("csv", data_files=data_files)
+    return dataset['train']
 
 
 def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
@@ -141,6 +149,8 @@ def add_minutes_from_last(X: pd.DataFrame, minutes_col: str, by_columns: List[st
 
 def convert_to_str(X: pd.Series) -> pd.Series:
     X = X.convert_dtypes(convert_integer=True)
+    # null_spots = X.isna()
+    X[X.isna()] = "NAN"
     X = X.astype(str)
     return X
 
@@ -175,6 +185,31 @@ def bucket_numeric(X: pd.Series, bin_type: str, num_bins: Union[int, List[float]
     else:
         out, bins = None, None  # todo
     return out, bins
+
+
+def convert_to_binary_string(X: pd.Series, digits_remaining: int = -1) -> (pd.Series, pd.array):
+    if len(X) == 0:
+        return [], pd.Series()  # shouldnt get here
+    if len(X.unique()) == 1:
+        return [''], X  # need to account for duplicates
+    if digits_remaining == 0:
+        return [''], pd.Series()  # all tokens in this bucket will be the same
+    med = X.median()
+    if med == X.max():
+        return [''], pd.Series()  # because we split <= sometimes everything is in the first bucket (this might solve uniqueness problem too)
+    left = X <= med  # gets a 0
+    right = X > med  # gets a 1
+    digits_remaining = max(digits_remaining - 1, -1)
+    left_strings, left_buckets = convert_to_binary_string(X[left], digits_remaining)
+    right_strings, right_buckets = convert_to_binary_string(X[right], digits_remaining)
+    left_tokens = ['0' + x for x in left_strings]
+    right_tokens = ['1' + x for x in right_strings]
+    # output = pd.Series()
+    output_series = pd.Series(index=range(len(X))).astype(str)
+    output_series[left.reset_index(drop=True)] = left_tokens
+    output_series[right.reset_index(drop=True)] = right_tokens
+    return output_series, pd.concat([left_buckets, right_buckets], ignore_index=True)
+
 
 
 def normalize_numeric(df: pd.DataFrame, normalize_type: str) -> pd.DataFrame:
@@ -397,7 +432,10 @@ def get_dataloader(cfg: DictConfig, tokenizer, str_tokens):
     The labels can be either the next token in the sequence (causal language modeling)
     or a masked token (masked language modeling).
     """
-    id_tokens = tokenizer.encode(str_tokens)
+    id_tokens = str_tokens.map(lambda example: tokenizer(example["text"]), batched=True)["input_ids"]
+    id_tokens = torch.Tensor(id_tokens).reshape(-1)
+
+    # id_tokens = tokenizer.encode(str_tokens)
     
     if cfg.training_objective == "causal":
         dataset = NextTokenPredictionDataset(id_tokens, cfg.context_length)
@@ -408,7 +446,60 @@ def get_dataloader(cfg: DictConfig, tokenizer, str_tokens):
     
     train_loader, val_loader = to_dataloader(cfg, dataset)
     return train_loader, val_loader
-    
+
+
+def preprocess_and_tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float=.0) -> DatasetDict|Dataset:
+    # def preprocess_function(examples):
+    #     return tokenizer([" ".join(x) for x in examples["text"]])
+    def preprocess_function(examples):
+        # print(examples)
+        # print('\n\n\n')
+        # TODO examples may need to be changed here depended on dataset
+        tokenized = tokenizer(examples["text"])
+        # print(tokenized)
+        return tokenized
+
+    if test_split > 0:
+        print("splitting")
+        data = data.train_test_split(test_size=test_split)  # split data so there is a test split for eval
+    try:
+        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
+    except:
+        threads = 1
+
+    tokenized_data = data.map(
+        preprocess_function,
+        batched=True,
+        num_proc=threads,
+        # remove_columns=data["train"].column_names,
+    )
+    # flatted_train = [item for row in tokenized_data["train"]["input_ids"] for item in row]
+    # flatted_test = [item for row in tokenized_data["test"]["input_ids"] for item in row]
+    # return flatted_train, flatted_test
+    return [item for row in tokenized_data["input_ids"] for item in row]
+    # data = data.map(preprocess_function, num_proc=threads, batched=True)
+    # return data
+    # block_size = 128
+
+    # def group_texts(examples):
+    # I think this groups texts across attributes
+    #     print(examples)
+    #     # Concatenate all texts.
+    #     concatenated_examples = {k: examples[k] for k in examples.keys()}
+    #     total_length = len(concatenated_examples[list(examples.keys())[0]])
+    #     # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
+    #     # customize this part to your needs.
+    #     if total_length >= block_size:
+    #         total_length = (total_length // block_size) * block_size
+    #     # Split by chunks of block_size.
+    #     result = {
+    #         k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
+    #         for k, t in concatenated_examples.items()
+    #     }
+    #     result["labels"] = result["input_ids"].copy()
+    #     return result
+    # tokenized_data = tokenized_data.map(group_texts, batched=True, num_proc=4)
+    # return tokenized_data
 
 def to_dataloader(cfg: DictConfig, dataset: data.Dataset) -> Tuple[data.DataLoader, data.DataLoader]:
     """Given a PyTorch Dataset and config for batch size, return a Pytorch DataLoader."""
