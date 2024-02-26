@@ -34,22 +34,26 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
     Handles either .csv file or .tgz file with single .csv file inside.
     """
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
-    _, ext = os.path.splitext(urlparse(cfg.url).path)
-    filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
-    if os.path.exists(filepath):
-        bytes = read_bytes(filepath)
+    csv_file = os.path.join(data_dir, f"{cfg.name}.csv")
+    if os.path.exists(csv_file):
+        df = pd.read_csv(csv_file)
     else:
-        bytes = download_data_from_url(cfg.url)
-    if ext == ".tgz":
-        if save_tar_to_disk:
+        _, ext = os.path.splitext(urlparse(cfg.url).path)
+        filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
+        if os.path.exists(filepath):
+            bytes = read_bytes(filepath)
+        else:
+            bytes = download_data_from_url(cfg.url)
+        if ext == ".tgz":
+            if save_tar_to_disk:
+                os.makedirs(data_dir, exist_ok=True)
+                write_bytes(bytes, filepath)
+            bytes = extract(bytes)     
+        df = pd.read_csv(bytes)
+        if save_csv_to_disk:
             os.makedirs(data_dir, exist_ok=True)
-            write_bytes(bytes, filepath)
-        bytes = extract(bytes)     
-    df = pd.read_csv(bytes)
-    if save_csv_to_disk:
-        os.makedirs(data_dir, exist_ok=True)
-        filepath = os.path.join(data_dir, f"{cfg.name}.csv")
-        df.to_csv(filepath, index=False)
+            filepath = os.path.join(data_dir, f"{cfg.name}.csv")
+            df.to_csv(filepath, index=False)
     return df
 
 
