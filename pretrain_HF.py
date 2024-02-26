@@ -10,9 +10,9 @@ import datasets
 
 from event_prediction import data_utils, get_data_processor
 import numpy as np
-import evaluate
+# import evaluate
 
-accuracy = evaluate.load("accuracy")
+# accuracy = evaluate.load("accuracy")
 
 log = logging.getLogger(__name__)
 
