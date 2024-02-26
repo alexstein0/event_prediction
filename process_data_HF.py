@@ -9,6 +9,7 @@ import hydra
 
 import event_prediction
 from event_prediction import data_utils, get_data_processor
+import multiprocessing
 
 log = logging.getLogger(__name__)
 
@@ -21,11 +22,13 @@ def main_process_data(cfg, setup=None) -> Dict:
     for col in data_processor.get_numeric_columns():
         dataset[col], buckets = data_utils.convert_to_binary_string(dataset[col], cfg.tokenizer.numeric_bucket_amount)
 
+    col_id = 0
     for col in data_processor.get_all_cols():
-        if col in data_processor.get_numeric_columns():
-            continue
-        else:
-            dataset[col] = dataset[col].astype(str)
+        # if col in data_processor.get_numeric_columns():
+        #     continue
+        # else:
+        dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
+        col_id += 1
 
     dataset = datasets.Dataset.from_pandas(dataset)
 
@@ -35,17 +38,22 @@ def main_process_data(cfg, setup=None) -> Dict:
         return new_ex
 
     dataset = dataset.map(lambda example: example, batched=True)
-    dataset = dataset.map(concat_columns, num_proc=1)
+    try:
+        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
+    except:
+        threads = 1
+    dataset = dataset.map(concat_columns, num_proc=threads)
     dataset = dataset.select_columns("text")
 
     processed_data_dir = os.path.join(cfg.processed_data_dir, cfg.data.name)
 
     dataset.save_to_disk(processed_data_dir)
-
-    tokenizer = Tokenizer(models.WordLevel(unk_token="[UNK]"))
+    unk_token = "[UNK]"
+    tokenizer = Tokenizer(models.WordLevel(unk_token=unk_token))
     tokenizer.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
 
     trainer = trainers.WordLevelTrainer(
+        special_tokens=['[PAD]', unk_token]
         # vocab_size=vocab_size,
         # special_tokens=list(set(special_token_args.values()))
     )
@@ -68,9 +76,10 @@ def main_process_data(cfg, setup=None) -> Dict:
         # **special_token_args,
     )
     log.info("TRAINING COMPLETE")
-    log.info(tokenizer.get_vocab())
-    log.info(tokenizer.get_vocab_size())
-    wrapped_tokenizer.save_pretrained(os.path.join(cfg.tokenizer_dir, "Alex"))
+    # log.info(tokenizer.get_vocab())
+    log.info(f"Vocab_size: {tokenizer.get_vocab_size()}")
+    tok_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
+    wrapped_tokenizer.save_pretrained(os.path.join(cfg.tokenizer_dir, tok_name))
     return {}
 
 @hydra.main(config_path="event_prediction/config", config_name="pre_process_data", version_base="1.3")

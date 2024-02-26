@@ -149,9 +149,9 @@ def add_minutes_from_last(X: pd.DataFrame, minutes_col: str, by_columns: List[st
 
 def convert_to_str(X: pd.Series) -> pd.Series:
     X = X.convert_dtypes(convert_integer=True)
-    # null_spots = X.isna()
-    X[X.isna()] = "NAN"
+    null_spots = X.isna()
     X = X.astype(str)
+    X[null_spots] = "NAN"
     return X
 
 def convert_to_bool(X: pd.Series) -> pd.Series:
@@ -425,15 +425,19 @@ def read_json(file_dir: str, file_name: str) -> Dict | List[Dict]:
     return data
 
 
-def get_dataloader(cfg: DictConfig, tokenizer, str_tokens):
+def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is_ids: bool = True):
     """
     Takes a string of raw text tokens and a tokenizer for encoding and returns a PyTorch 
     Dataloader object with examples, labels batches ready for training.
     The labels can be either the next token in the sequence (causal language modeling)
     or a masked token (masked language modeling).
     """
-    id_tokens = str_tokens.map(lambda example: tokenizer(example["text"]), batched=True)["input_ids"]
-    id_tokens = torch.Tensor(id_tokens).reshape(-1)
+    if not is_ids:
+        id_tokens = tokens.map(lambda example: tokenizer(example["text"]), batched=True)["input_ids"]
+    else:
+        id_tokens = tokens
+
+    id_tokens = torch.tensor(id_tokens, dtype=int).reshape(-1)
 
     # id_tokens = tokenizer.encode(str_tokens)
     
@@ -452,11 +456,8 @@ def preprocess_and_tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_s
     # def preprocess_function(examples):
     #     return tokenizer([" ".join(x) for x in examples["text"]])
     def preprocess_function(examples):
-        # print(examples)
-        # print('\n\n\n')
         # TODO examples may need to be changed here depended on dataset
         tokenized = tokenizer(examples["text"])
-        # print(tokenized)
         return tokenized
 
     if test_split > 0:
