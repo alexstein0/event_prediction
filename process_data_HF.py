@@ -79,7 +79,9 @@ def main_process_data(cfg, setup=None) -> Dict:
     # log.info(tokenizer.get_vocab())
     log.info(f"Vocab_size: {tokenizer.get_vocab_size()}")
     tok_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
-    wrapped_tokenizer.save_pretrained(os.path.join(cfg.tokenizer_dir, tok_name))
+    tokenizer_path = os.path.join(cfg.tokenizer_dir, tok_name)
+    saved_path = wrapped_tokenizer.save_pretrained(tokenizer_path)
+    log.info(f"Saved tokenizer to {os.getcwd()}/{tokenizer_path}")
     return {}
 
 @hydra.main(config_path="event_prediction/config", config_name="pre_process_data", version_base="1.3")

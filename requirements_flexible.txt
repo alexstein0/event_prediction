@@ -1,0 +1,14 @@
+requests
+tqdm
+einops
+lightning
+wandb
+torch
+transformers
+tokenizers
+pandas
+hydra-core
+pynvml
+multiprocess
+datasets
+scikit-learn

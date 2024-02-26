@@ -41,7 +41,7 @@ def main_launcher(cfg, main_fn, job_name=""):
 
     # TODO
     # Decide GPU and possibly connect to distributed setup
-    setup, kWh_counter = system_startup(cfg)
+    # setup, kWh_counter = system_startup(cfg)
     # # Initialize wanDB
     # if cfg.wandb.enabled:
     #     _initialize_wandb(setup, cfg)
@@ -49,7 +49,7 @@ def main_launcher(cfg, main_fn, job_name=""):
     log.info(f"--------------Launching {job_name} run! ---------------------")
     log.info(OmegaConf.to_yaml(cfg, resolve=True))
     metrics = main_fn(cfg) #, setup)
-    metrics = collect_system_metrics(cfg, metrics, kWh_counter, setup)
+    # metrics = collect_system_metrics(cfg, metrics, kWh_counter, setup)
 
     log.info("-------------------------------------------------------------")
     log.info(f"Finished running job {cfg.name} with total train time: " f"{str(datetime.timedelta(seconds=time.time() - launch_time))}")
