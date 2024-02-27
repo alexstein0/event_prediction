@@ -2,11 +2,11 @@ defaults:
   - default_data
   - _self_
 
-size: "" #"_small"
+size: "" #"small"
 
-name: ibm_fraud_transaction${data.size}
+name: ibm_fraud_transaction_${data.size}
 
-url: https://obj.umiacs.umd.edu/eventprediction/transactions${data.size}.tgz
+url: https://obj.umiacs.umd.edu/eventprediction/transactions_${data.size}.tgz
 
 data_processor: ibm_fraud_transaction
 

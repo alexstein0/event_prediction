@@ -1,6 +1,6 @@
 import hydra
 import event_prediction
-from event_prediction import model_utils, trainer_utils, data_utils
+from event_prediction import model_utils, trainer_utils, data_utils, tokenizer_utils, get_data_processor
 import logging
 from typing import Dict
 from transformers import AutoTokenizer, DataCollatorForLanguageModeling, TrainingArguments, Trainer
@@ -8,7 +8,6 @@ import os
 from hydra.utils import get_original_cwd
 import datasets
 
-from event_prediction import data_utils, get_data_processor
 import numpy as np
 import multiprocessing
 
@@ -72,7 +71,11 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(
         f"Total tokens in dataloaders (n_batches * batch_sz * context_len): {(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.context_length}")
 
-    trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader)
+
+    classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True)
+    num_cols = classification_info["num_cols"]
+    label_ids = classification_info["label_ids"]
+    trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader, num_cols, label_ids)
 
     log.info("TRAINING")
     model_path = trainer.train()

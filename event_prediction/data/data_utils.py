@@ -50,7 +50,11 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
             if save_tar_to_disk:
                 os.makedirs(data_dir, exist_ok=True)
                 write_bytes(bytes, filepath)
-            bytes = extract(bytes)     
+            try:    
+                bytes = extract(bytes)
+            except tarfile.ReadError as e:
+                log.error(f"Error when trying to extract file. Double-check that the URL actually exists: {cfg.url}")
+                raise     
         df = pd.read_csv(bytes)
         if save_csv_to_disk:
             os.makedirs(data_dir, exist_ok=True)
