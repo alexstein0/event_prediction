@@ -57,13 +57,21 @@ def main_pretrain(cfg, setup=None) -> Dict:
     tokenized_string_dataset = data_utils.preprocess_and_tokenize_data(dataset, tokenizer)
     log.info("DATASET TOKENIZED")
 
+    # Get info on the dataset need for classification and make a validation split that doesn't interrupt rows of of the original tabular data
+    classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True)
+    num_cols = classification_info["num_cols"]
+    label_ids = classification_info["label_ids"]
+    train_ratio = cfg.model.train_ratio
+    num_tokens = len(tokenized_string_dataset)
+    split_point = int(num_tokens * train_ratio) - int(num_tokens * train_ratio) % num_cols 
+
     assert isinstance(tokenized_string_dataset,
                       list), f"Expected list of string tokens, instead got {type(tokenized_string_dataset)}"
-    log.info(f"Total tokens in dataset: {len(tokenized_string_dataset)}")
+    log.info(f"Total tokens in dataset: {num_tokens}")
     log.info(f"Unique tokens in dataset: {len(set(tokenized_string_dataset))}")
     log.info(f"Num tokens not in vocab: {len(set(tokenized_string_dataset)) - len(tokenizer.vocab)}")
-
-    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
+    
+    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset, split_point=split_point)
     log.info(f"Num train loader batches: {len(train_loader)}")
     log.info(f"Num val loader batches: {len(val_loader)}")
     log.info(f"Dataloader batch size: {train_loader.batch_size}")
@@ -71,10 +79,6 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(
         f"Total tokens in dataloaders (n_batches * batch_sz * context_len): {(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.context_length}")
 
-
-    classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True)
-    num_cols = classification_info["num_cols"]
-    label_ids = classification_info["label_ids"]
     trainer = trainer_utils.get_trainer(cfg.model, model, train_loader, val_loader, num_cols, label_ids)
 
     log.info("TRAINING")

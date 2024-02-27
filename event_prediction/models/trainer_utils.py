@@ -105,7 +105,7 @@ class LightingWrapper(L.LightningModule):
                 binary_targets = selected_targets == is_fraud_id  # (b*n/tokens_per_trans)
                 auc = roc_auc_score(binary_targets, fraud_probs[1])
                 self.log("val_auc", auc, prog_bar=True)
-            except ValueError as e
+            except ValueError as e:
                 log.info(f"There were no true fraud values in the validation set: {e}")
 
             # Calculate Accuracy
