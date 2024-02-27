@@ -33,7 +33,7 @@ class LightingWrapper(L.LightningModule):
     the original model weights from the checkpoint dict.
     """
 
-    def __init__(self, model, loss_fn, optim, lr_scheduler, grad_accum_batches=1, tokens_per_trans=16, isfraud_token_id=157, notfraud_token_id=2):
+    def __init__(self, model, loss_fn, optim, lr_scheduler, grad_accum_batches=1, tokens_per_trans=16, isfraud_token_id=14, notfraud_token_id=7):
         super().__init__()
         self.model = model
         self.loss_fn = loss_fn

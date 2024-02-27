@@ -2,7 +2,6 @@
 .venv_nb
 /data/
 /data_raw/
-/tokenizer/
 logs
 
 .DS_Store
