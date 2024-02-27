@@ -27,6 +27,7 @@ def main_process_data(cfg, setup=None) -> Dict:
     tokenizer.pre_tokenizer = pre_tokenizers.WhitespaceSplit()
 
     trainer = trainers.WordLevelTrainer(
+        vocab_size=cfg.tokenizer.vocab_size,
         special_tokens=['[PAD]', unk_token]
         # vocab_size=vocab_size,
         # special_tokens=list(set(special_token_args.values()))
