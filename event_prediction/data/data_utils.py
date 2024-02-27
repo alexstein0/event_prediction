@@ -5,6 +5,8 @@ import os
 import tarfile
 from typing import Dict, List, Tuple, Union
 from urllib.parse import urlparse
+
+import datasets
 from datasets import DatasetDict, Dataset
 from transformers import AutoTokenizer
 import multiprocessing
@@ -455,6 +457,33 @@ def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is
     train_loader, val_loader = to_dataloader(cfg, dataset)
     return train_loader, val_loader
 
+
+def preprocess_dataset(dataset, data_processor, numeric_bucket_amount: int = 5) -> datasets.Dataset:
+
+    dataset = data_processor.normalize_data(dataset)
+    for col in data_processor.get_numeric_columns():
+        dataset[col], buckets = convert_to_binary_string(dataset[col], numeric_bucket_amount)
+
+    col_id = 0
+    for col in data_processor.get_all_cols():
+        dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
+        col_id += 1
+
+    dataset = Dataset.from_pandas(dataset)
+
+    def concat_columns(example):
+        new_ex = {}
+        new_ex["text"] = " ".join(example.values())
+        return new_ex
+
+    dataset = dataset.map(lambda example: example, batched=True)
+    try:
+        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
+    except:
+        threads = 1
+    dataset = dataset.map(concat_columns, num_proc=threads)
+    dataset = dataset.select_columns("text")
+    return dataset
 
 def preprocess_and_tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float=.0) -> DatasetDict|Dataset:
     # def preprocess_function(examples):

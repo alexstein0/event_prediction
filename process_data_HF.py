@@ -13,37 +13,11 @@ import multiprocessing
 
 log = logging.getLogger(__name__)
 
+
 def main_process_data(cfg, setup=None) -> Dict:
-    # data = data_utils.get_huggingface_dataset(cfg.data)
     dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, cfg.save_tar, cfg.save_csv)
     data_processor = get_data_processor(cfg.data)
-
-    dataset = data_processor.normalize_data(dataset)
-    for col in data_processor.get_numeric_columns():
-        dataset[col], buckets = data_utils.convert_to_binary_string(dataset[col], cfg.tokenizer.numeric_bucket_amount)
-
-    col_id = 0
-    for col in data_processor.get_all_cols():
-        # if col in data_processor.get_numeric_columns():
-        #     continue
-        # else:
-        dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
-        col_id += 1
-
-    dataset = datasets.Dataset.from_pandas(dataset)
-
-    def concat_columns(example):
-        new_ex = {}
-        new_ex["text"] = " ".join(example.values())
-        return new_ex
-
-    dataset = dataset.map(lambda example: example, batched=True)
-    try:
-        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
-    except:
-        threads = 1
-    dataset = dataset.map(concat_columns, num_proc=threads)
-    dataset = dataset.select_columns("text")
+    dataset = data_utils.preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
 
     processed_data_dir = os.path.join(cfg.processed_data_dir, cfg.data.name)
 

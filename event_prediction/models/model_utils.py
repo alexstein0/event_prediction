@@ -10,6 +10,6 @@ def get_model(cfg, tokenizer):
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
-    # model = GPT2LMHeadModel(config)
-    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    model = GPT2LMHeadModel(config)
+    # model = AutoModelForCausalLM.from_pretrained("distilgpt2")
     return model

@@ -25,31 +25,8 @@ def main_pretrain(cfg, setup=None) -> Dict:
     if cfg.preprocess_data_name is None:
         dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, False, False)
         data_processor = get_data_processor(cfg.data)
+        dataset = data_utils.preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
 
-        dataset = data_processor.normalize_data(dataset)
-        for col in data_processor.get_numeric_columns():
-            dataset[col], buckets = data_utils.convert_to_binary_string(dataset[col], cfg.tokenizer.numeric_bucket_amount)
-
-        for col in data_processor.get_all_cols():
-            if col in data_processor.get_numeric_columns():
-                continue
-            else:
-                dataset[col] = dataset[col].astype(str)
-
-        dataset = datasets.Dataset.from_pandas(dataset)
-
-        def concat_columns(example):
-            new_ex = {}
-            new_ex["text"] = " ".join(example.values())
-            return new_ex
-
-        dataset = dataset.map(lambda example: example, batched=True)
-        try:
-            threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
-        except:
-            threads = 1
-        dataset = dataset.map(concat_columns, num_proc=threads)
-        dataset = dataset.select_columns("text")
     else:
         data_dir = os.path.join(get_original_cwd(), cfg.data_dir)
         filepath = os.path.join(data_dir, cfg.preprocess_data_name)
