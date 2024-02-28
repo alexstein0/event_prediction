@@ -200,9 +200,10 @@ class Trainer:
         self.wandb_logger.experiment.finish()
         if self.ckpt.best_model_path:
             statedict_path = self.save_statedict(self.ckpt.best_model_path)
+            return statedict_path
         else:
-            log.error("No checkpoints successfully saved in training.")
-        return statedict_path
+            log.error("No checkpoints successfully created during training.")
+        
 
 
     def save_statedict(self, ckpt_path):
