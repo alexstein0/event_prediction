@@ -2,7 +2,7 @@ name: gpt2
 project: event-prediction
 
 # Model args
-context_length: 128
+context_length: 800
 
 # Train args
 batch_size: 32
