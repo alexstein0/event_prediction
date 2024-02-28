@@ -12,3 +12,4 @@ pynvml
 multiprocess
 datasets
 scikit-learn
+torchmetrics

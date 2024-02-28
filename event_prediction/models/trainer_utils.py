@@ -14,6 +14,7 @@ from sklearn.metrics import roc_auc_score
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from torchmetrics.functional.classification import binary_auroc
 
 log = logging.getLogger(__name__)
 
@@ -102,8 +103,9 @@ class LightingWrapper(L.LightningModule):
 
             # Calculate AUC
             try:
+                is_fraud_probs = fraud_probs[1] # (b*n/tokens_per_trans)
                 binary_targets = selected_targets == is_fraud_id  # (b*n/tokens_per_trans)
-                auc = roc_auc_score(binary_targets, fraud_probs[1])
+                auc = binary_auroc(is_fraud_probs, binary_targets)
                 self.log("val_auc", auc, prog_bar=True)
             except ValueError as e:
                 log.info(f"There were no true fraud values in the validation set: {e}")

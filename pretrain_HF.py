@@ -63,7 +63,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Unique tokens in dataset: {len(set(tokenized_string_dataset))}")
     log.info(f"Num tokens not in vocab: {len(set(tokenized_string_dataset)) - len(tokenizer.vocab)}")
     
-    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset, split_point=split_point)
+    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
     log.info(f"Num train loader batches: {len(train_loader)}")
     log.info(f"Num val loader batches: {len(val_loader)}")
     log.info(f"Dataloader batch size: {train_loader.batch_size}")
