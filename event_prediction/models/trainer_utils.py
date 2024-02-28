@@ -198,7 +198,10 @@ class Trainer:
     def train(self):
         self.trainer.fit(self.wrapped_model, self.train_loader, self.val_loader)
         self.wandb_logger.experiment.finish()
-        statedict_path = self.save_statedict(self.ckpt.best_model_path)
+        if self.ckpt.best_model_path:
+            statedict_path = self.save_statedict(self.ckpt.best_model_path)
+        else:
+            log.error("No checkpoints successfully saved in training.")
         return statedict_path
 
 
