@@ -435,7 +435,7 @@ def read_json(file_dir: str, file_name: str) -> Dict | List[Dict]:
     return data
 
 
-def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is_ids: bool = True, split_point: int = None) -> Tuple[data.DataLoader, data.DataLoader]:
+def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is_ids: bool = True, random_split: bool = False) -> Tuple[data.DataLoader, data.DataLoader]:
     """
     Takes a string of raw text tokens and a tokenizer for encoding and returns a PyTorch 
     Dataloader object with examples, labels batches ready for training.
@@ -458,7 +458,7 @@ def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is
     else:
         raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
     
-    train_loader, val_loader = to_dataloader(cfg, dataset, split_point=split_point)
+    train_loader, val_loader = to_dataloader(cfg, dataset, random_split=random_split)
     return train_loader, val_loader
 
 
@@ -539,16 +539,16 @@ def preprocess_and_tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_s
     # tokenized_data = tokenized_data.map(group_texts, batched=True, num_proc=4)
     # return tokenized_data
 
-def to_dataloader(cfg: DictConfig, dataset: data.Dataset, split_point: int = None) -> Tuple[data.DataLoader, data.DataLoader]:
+def to_dataloader(cfg: DictConfig, dataset: data.Dataset, random_split: bool = False) -> Tuple[data.DataLoader, data.DataLoader]:
     """Given a PyTorch Dataset and config for batch size, return a Pytorch DataLoader."""
     n = len(dataset)
     train_size = int(cfg.train_ratio * n)
     val_size = n - train_size
-    if split_point is not None:
-        train_data = data.Subset(dataset, range(0, split_point))
-        val_data = data.Subset(dataset, range(split_point, len(dataset)))
-    else:
+    if random_split:
         train_data, val_data = data.random_split(dataset, [train_size, val_size])
+    else:
+        train_data = data.Subset(dataset, range(0, train_size))
+        val_data = data.Subset(dataset, range(train_size, n))
     train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
     return train_loader, val_loader

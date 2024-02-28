@@ -2,7 +2,7 @@ name: gpt2
 project: event-prediction
 
 # Model args
-context_length: 800
+context_length: 800  # must be a multiple of tabular columns if each column is a token
 
 # Train args
 batch_size: 32
