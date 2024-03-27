@@ -46,4 +46,3 @@ def get_tokens_by_columns(tokenizer: Tokenizer, return_columns: List[str] = None
                     ids[val] = id
             mapping[col_name] = ids
     return mapping
-

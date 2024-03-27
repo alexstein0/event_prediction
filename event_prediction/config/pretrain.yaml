@@ -6,17 +6,21 @@ defaults:
   - impl: torch-default
   - tokenizer: composite
   - model: gpt2
+#  - model: encoder
   - wandb: none
   - _self_
   - override hydra/job_logging: custom
 
 base_dir: outputs
 data_dir: data_raw
-#processed_data_dir: data
 tokenizer_dir: tokenizer
 
 tokenizer_name: ${data.name}_${tokenizer.name}
-preprocess_data_name:
+tokenized_data_name:
+processed_data_dir: data
+
+save_csv: False
+preprocess_only: False
 
 hydra:
   sweep:

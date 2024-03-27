@@ -27,6 +27,7 @@ import tempfile
 import logging
 import hydra
 from omegaconf import OmegaConf, open_dict
+import transformers
 
 log = logging.getLogger(__name__)
 os.environ["HYDRA_FULL_ERROR"] = "0"
@@ -41,7 +42,7 @@ def main_launcher(cfg, main_fn, job_name=""):
 
     # TODO
     # Decide GPU and possibly connect to distributed setup
-    # setup, kWh_counter = system_startup(cfg)
+    setup, kWh_counter = system_startup(cfg)
     # # Initialize wanDB
     # if cfg.wandb.enabled:
     #     _initialize_wandb(setup, cfg)
@@ -49,7 +50,7 @@ def main_launcher(cfg, main_fn, job_name=""):
     log.info(f"--------------Launching {job_name} run! ---------------------")
     log.info(OmegaConf.to_yaml(cfg, resolve=True))
     metrics = main_fn(cfg) #, setup)
-    # metrics = collect_system_metrics(cfg, metrics, kWh_counter, setup)
+    metrics = collect_system_metrics(cfg, metrics, kWh_counter, setup)
 
     log.info("-------------------------------------------------------------")
     log.info(f"Finished running job {cfg.name} with total train time: " f"{str(datetime.timedelta(seconds=time.time() - launch_time))}")
@@ -108,11 +109,19 @@ def system_startup(cfg):
         log.info(os.environ)
 
     # allowed_cpus_available = min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
-    if cfg.impl.is_mac:
-        allowed_cpus_available = 1  # when running on mac
-    else:
-        allowed_cpus_available = min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
+    # if cfg.impl.is_mac:
+    #     allowed_cpus_available = 1  # when running on mac
+    # else:
+    #     allowed_cpus_available = min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
+    allowed_cpus_available = get_cpus()
     # cfg.impl["num_threads"] = allowed_cpus_available
+
+    try:
+        ram = psutil.Process().rlimit(psutil.RLIMIT_RSS)[0] / (2**30)
+    except:
+        log.warning("Cannot find process")
+        ram = 0
+
     # Distributed launch?
     if "LOCAL_RANK" in os.environ:
         torch.distributed.init_process_group(backend=cfg.impl.dist_backend)
@@ -158,7 +167,7 @@ def system_startup(cfg):
 
     if local_rank == 0:
         log.info(f"Platform: {sys.platform}, Python: {python_version}, PyTorch: {torch.__version__}")
-        log.info(f"CPUs: {allowed_cpus_available}, GPUs: {torch.cuda.device_count()} on {socket.gethostname()}.")
+        log.info(f"CPUs: {allowed_cpus_available}, GPUs: {torch.cuda.device_count()} (ram: {ram}GB) on {socket.gethostname()}.")
 
     # 100% reproducibility?
     if cfg.impl.deterministic:
@@ -421,6 +430,18 @@ def wandb_log(stats, cfg):
             import wandb
 
             wandb.log({k: v[-1] for k, v in stats.items()}, step=stats["step"][-1] if "step" in stats else None)
+
+
+def get_cpus() -> int:
+    # Number of threads
+    try:
+        return min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
+    except:
+        pass
+    try:
+        return os.cpu_count()  # when running on mac
+    except:
+        return 1
 
 
 def flatten(d, parent_key="", sep="_"):

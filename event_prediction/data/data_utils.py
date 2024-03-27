@@ -39,13 +39,17 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
     csv_file = os.path.join(data_dir, f"{cfg.name}.csv")
     if os.path.exists(csv_file):
         df = pd.read_csv(csv_file)
+        log.info(f"Read CSV from {csv_file}")
     else:
         _, ext = os.path.splitext(urlparse(cfg.url).path)
         filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
         if os.path.exists(filepath):
             bytes = read_bytes(filepath)
+            log.info(f"Loaded bytes from to {filepath}")
         else:
             bytes = download_data_from_url(cfg.url)
+            log.info(f"Downloaded bytes from to {cfg.url}")
+
         if ext == ".tgz":
             if save_tar_to_disk:
                 os.makedirs(data_dir, exist_ok=True)
@@ -60,6 +64,7 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
             os.makedirs(data_dir, exist_ok=True)
             filepath = os.path.join(data_dir, f"{cfg.name}.csv")
             df.to_csv(filepath, index=False)
+            log.info(f"Saved csv to {filepath}")
     return df
 
 
@@ -214,11 +219,11 @@ def convert_to_binary_string(X: pd.Series, digits_remaining: int = -1) -> (pd.Se
     right_strings, right_buckets = convert_to_binary_string(X[right], digits_remaining)
     left_tokens = ['0' + x for x in left_strings]
     right_tokens = ['1' + x for x in right_strings]
-    # output = pd.Series()
     output_series = pd.Series(index=range(len(X))).astype(str)
     output_series[left.reset_index(drop=True)] = left_tokens
     output_series[right.reset_index(drop=True)] = right_tokens
-    return output_series, pd.concat([left_buckets, right_buckets], ignore_index=True)
+    concat = (left_buckets.copy() if right_buckets.empty else right_buckets.copy() if left_buckets.empty else pd.concat([left_buckets, right_buckets], ignore_index=True))  # if both DataFrames non empty
+    return output_series, concat
 
 
 
@@ -447,14 +452,12 @@ def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is
     else:
         id_tokens = tokens
 
-    id_tokens = torch.tensor(id_tokens, dtype=int).reshape(-1)
+    id_tokens = torch.tensor(id_tokens, dtype=int)
 
-    # id_tokens = tokenizer.encode(str_tokens)
-    
     if cfg.training_objective == "causal":
-        dataset = NextTokenPredictionDataset(id_tokens, cfg.context_length)
+        dataset = NextTokenPredictionDataset(id_tokens, cfg.context_length, tokenizer.pad_token_id)
     elif cfg.training_objective == "masked":
-        raise NotImplementedError
+        dataset = MaskedLanguageModelingDataset(id_tokens, n_cols)
     else:
         raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
     
@@ -475,31 +478,32 @@ def preprocess_dataset(dataset, data_processor, numeric_bucket_amount: int = 5) 
 
     dataset = Dataset.from_pandas(dataset)
 
+    # dataset = dataset.map(lambda example: example, batched=True)
+    try:
+        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
+    except:
+        threads = 1
+
     def concat_columns(example):
         new_ex = {}
         new_ex["text"] = " ".join(example.values())
         return new_ex
 
-    dataset = dataset.map(lambda example: example, batched=True)
-    try:
-        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
-    except:
-        threads = 1
     dataset = dataset.map(concat_columns, num_proc=threads)
     dataset = dataset.select_columns("text")
     return dataset
 
-def preprocess_and_tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float=.0) -> DatasetDict|Dataset:
-    # def preprocess_function(examples):
-    #     return tokenizer([" ".join(x) for x in examples["text"]])
+
+def tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float=.0) -> DatasetDict | Dataset:
     def preprocess_function(examples):
         # TODO examples may need to be changed here depended on dataset
         tokenized = tokenizer(examples["text"])
         return tokenized
 
-    if test_split > 0:
-        print("splitting")
-        data = data.train_test_split(test_size=test_split)  # split data so there is a test split for eval
+    # if test_split > 0:
+    #     print("splitting")
+    #     data = data.train_test_split(test_size=test_split)  # split data so there is a test split for eval
+    #
     try:
         threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
     except:
@@ -511,33 +515,18 @@ def preprocess_and_tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_s
         num_proc=threads,
         # remove_columns=data["train"].column_names,
     )
-    # flatted_train = [item for row in tokenized_data["train"]["input_ids"] for item in row]
-    # flatted_test = [item for row in tokenized_data["test"]["input_ids"] for item in row]
-    # return flatted_train, flatted_test
-    return [item for row in tokenized_data["input_ids"] for item in row]
-    # data = data.map(preprocess_function, num_proc=threads, batched=True)
-    # return data
-    # block_size = 128
+    return tokenized_data
 
-    # def group_texts(examples):
-    # I think this groups texts across attributes
-    #     print(examples)
-    #     # Concatenate all texts.
-    #     concatenated_examples = {k: examples[k] for k in examples.keys()}
-    #     total_length = len(concatenated_examples[list(examples.keys())[0]])
-    #     # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
-    #     # customize this part to your needs.
-    #     if total_length >= block_size:
-    #         total_length = (total_length // block_size) * block_size
-    #     # Split by chunks of block_size.
-    #     result = {
-    #         k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
-    #         for k, t in concatenated_examples.items()
-    #     }
-    #     result["labels"] = result["input_ids"].copy()
-    #     return result
-    # tokenized_data = tokenized_data.map(group_texts, batched=True, num_proc=4)
-    # return tokenized_data
+def get_data_and_tokenize(cfg, data_processor, tokenizer):
+    dataset = get_data_from_raw(cfg.data, cfg.data_dir, False, False)
+    dataset = preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
+    tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
+    log.info("DATASET PROCESSED, BEGINNING TOKENIZATION")
+    tokenized_data = tokenize_data(dataset, tokenizer)
+    log.info("DATASET TOKENIZED")
+    return tokenized_data
+
+
 
 def to_dataloader(cfg: DictConfig, dataset: data.Dataset, random_split: bool = False) -> Tuple[data.DataLoader, data.DataLoader]:
     """Given a PyTorch Dataset and config for batch size, return a Pytorch DataLoader."""
@@ -549,6 +538,7 @@ def to_dataloader(cfg: DictConfig, dataset: data.Dataset, random_split: bool = F
     else:
         train_data = data.Subset(dataset, range(0, train_size))
         val_data = data.Subset(dataset, range(train_size, n))
+    # TODO THIS DOESNT WORK, VAL DATA GETS MESSED UP?  tried adding.dataset
     train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
     return train_loader, val_loader
@@ -556,25 +546,46 @@ def to_dataloader(cfg: DictConfig, dataset: data.Dataset, random_split: bool = F
 
 class NextTokenPredictionDataset(data.Dataset):
     """
-    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language 
+    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language
     Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
     """
-    def __init__(self, data: torch.Tensor, context_length: int):
+    def __init__(self, data: torch.Tensor, context_length: int, pad_id: int):
         self.data = data
+        self.flattened_data = data.reshape(-1)
         self.context_length = context_length
+        self.flattened_data = torch.cat([self.flattened_data, torch.tensor([pad_id])])
 
     def __len__(self) -> int:
-        return len(self.data) // self.context_length
+        return len(self.flattened_data) // self.context_length
 
     def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         # The corresponding label for each example is a chunk of tokens of the same size,
         # but shifted one token to the right.
-        
+
         # TODO: It is a arbitrary design choice whether to do the shift of the labels here
         # or in the loss function. Huggingface's DataCollator is designed to let the loss
         # function do the shifting, so we need to change this if we want to be compatible with that.
-        x = self.data[i : i + self.context_length]
-        y = self.data[i + 1 : i + self.context_length + 1]
+        start = i * self.context_length
+        x = self.flattened_data[start : start + self.context_length]
+        y = self.flattened_data[start + 1 : start + self.context_length + 1]
+        return x, y
+
+
+class MaskedLanguageModelingDataset(data.Dataset):
+    """
+    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language
+    Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
+    """
+
+    def __init__(self, data: torch.Tensor, n_cols: int):
+        self.data = data
+        self.n_cols = n_cols
+
+    def __len__(self) -> int:
+        return len(self.data) // self.n_cols
+
+    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        # todo
         return x, y
 
 class TqdmToLogger(tqdm):

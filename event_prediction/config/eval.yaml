@@ -1,21 +1,28 @@
 # @package _global_
-# Configuration defaults
-# Settings are separated into case, attack analysis
+
+# The other config files this relies on, specified in the format "<folder>: <file>[.yaml]"
 defaults:
-  - data: ibm_fraud_transaction_small
+  - data: ibm_fraud_transaction
   - impl: torch-default
   - tokenizer: simple
+  - model: gpt2
+#  - model: encoder
   - wandb: none
   - _self_
   - override hydra/job_logging: custom
 
-
 base_dir: outputs
 data_dir: data_raw
-processed_data_dir: data
 tokenizer_dir: tokenizer
-save_tar: True
+
+tokenizer_name: ${data.name}_${tokenizer.name}
+tokenized_data_name:
+processed_data_dir: data
+
+model_dir:
+
 save_csv: False
+preprocess_only: False
 
 hydra:
   sweep:
