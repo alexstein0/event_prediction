@@ -2,10 +2,10 @@ from tokenizers import Tokenizer
 from typing import Dict, List
 
 
-def get_classification_options(tokenizer: Tokenizer, label_in_last_col: bool = True) -> Dict:
+def get_classification_options(tokenizer: Tokenizer, label_in_last_col: bool = False, label_col_prefix: str = None) -> Dict:
     """
     Get info needed for doing labeled-data style classification from next-token-prediction generated tokens.
-    Assuming a vocabular of tokens produced from tabular data in rows and columns, get the column number that
+    Assuming a vocabulary of tokens produced from tabular data in rows and columns, get the column number that
     contains the label for a given row, and get the token ids that correspond to the possible values of that label.
     """
     vocab = tokenizer.get_vocab()
@@ -13,13 +13,14 @@ def get_classification_options(tokenizer: Tokenizer, label_in_last_col: bool = T
     column_names = [int(x) for x in column_names if x.isnumeric()]
     if label_in_last_col:
         label_col = str(max(column_names))
+    elif label_col_prefix is not None:
+        label_col = label_col_prefix
     else:
         # We could have the label in some other column than last, but it probably makes the most sense to have
         # relevant data for a prediction in preceeding columns (and thus preceeding tokens).
-        raise NotImplementedError("Only label_in_last_col=True is supported right now")
+        raise NotImplementedError("Only label_in_last_col=True or contains_row_token=True is supported right now")
     ids = get_tokens_by_columns(tokenizer, [label_col,])[label_col]
     return {"num_cols": len(column_names), "label_ids": ids}
-
 
 
 def get_tokens_by_columns(tokenizer: Tokenizer, return_columns: List[str] = None) -> Dict[str, Dict[str, int]]:

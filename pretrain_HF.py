@@ -1,15 +1,11 @@
 import hydra
 import event_prediction
-from event_prediction import model_utils, trainer_utils, data_utils, tokenizer_utils, get_data_processor, datacollator
+from event_prediction import model_utils, trainer_utils_copy, data_utils, tokenizer_utils, get_data_processor, data_preparation, ModelTrainerInterface
 import logging
 from typing import Dict
-from transformers import AutoTokenizer, DataCollatorForLanguageModeling, TrainingArguments, Trainer
 import os
 from hydra.utils import get_original_cwd
-import datasets
 
-import numpy as np
-import multiprocessing
 
 log = logging.getLogger(__name__)
 
@@ -24,12 +20,19 @@ def main_pretrain(cfg, setup=None) -> Dict:
     tokenizer_path = os.path.join(get_original_cwd(), cfg.tokenizer_dir, tokenized_name)
     log.info(f"Loading tokenizer from: {tokenizer_path}")
     tokenizer = event_prediction.load_tokenizer(tokenizer_path)
+
+    # my_dict = tokenizer.get_vocab()
+    # sorted_items = sorted(my_dict.items(), key=lambda x: x[1])
+    # sorted_dict = {k: v+1 for k, v in sorted_items}
+    # print(json.dumps(sorted_dict, indent=4))
+    # exit()
+
     log.info(f"TOKENIZER LOAD COMPLETE")
 
     log.info(f"GET DATA")
     if cfg.tokenized_data_name is None:
         data_processor = get_data_processor(cfg.data)
-        tokenized_data = data_utils.get_data_and_tokenize(cfg, data_processor, tokenizer)
+        tokenized_data = data_preparation.get_data_and_tokenize(cfg, data_processor, tokenizer)
 
         if cfg.save_csv or cfg.preprocess_only:
             data_dir = os.path.join(get_original_cwd(), cfg.processed_data_dir)
@@ -43,7 +46,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
         filepath = os.path.join(data_dir, cfg.tokenized_data_name)
         tokenized_data = event_prediction.get_data(filepath)
         log.info(f"DATASET LOADED from {filepath}")
-        # # REMOVE
+        # # Uncomment if have data and tokenizer but need tokenize
         # tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
         # tokenized_data = data_utils.tokenize_data(tokenized_data, tokenizer)
         # log.info("DATASET TOKENIZED")
@@ -57,11 +60,12 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"DATASET LOAD COMPLETE")
 
     # PROCESS DATA
-    log.info(f"PROCESS DATASET")
+    log.info(f"PROCESS TOKENIZED DATASET")
     # dataset = dataset.map(lambda example: tokenizer(example["text"]), batched=True)
-    tokenized_string_dataset = tokenized_data["input_ids"]
-    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
-    dataloaders = {"train": train_loader, "val": val_loader}
+    dataloaders = data_preparation.prepare_dataloaders(tokenized_data, tokenizer, cfg)
+
+    train_loader = dataloaders["train"]
+    val_loader = dataloaders["val"]
 
     log.info(f"Num train loader batches: {len(train_loader)}")
     log.info(f"Num val loader batches: {len(val_loader)}")
@@ -71,29 +75,37 @@ def main_pretrain(cfg, setup=None) -> Dict:
              f"{(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.context_length}")
     log.info(f"DATASET PROCESSED")
 
+    log.info("NEED MORE DATASET PROCESSING, split into batches/mini batches etc")
+
     # todo
     # if mlm add mask token and pad token
-    tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
+    # tokenizer.add_special_tokens(
+    #     {'pad_token': '[PAD]',
+    #      'unk_token': '[UNK]',
+    #      'new_row': '[ROW]'}
+    # )
 
+    # label_col_id = "15"
+    row_id = tokenizer.vocab["[ROW]"]
     # train model
     # GET MODEL
     log.info(f"INITIALIZING MODEL")
     classification = True
     if classification:
         # todo add collator
-        classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True)
-        num_cols = classification_info["num_cols"]
-        label_ids = classification_info["label_ids"]
-        model_interface = trainer_utils.get_trainer(cfg.model, tokenizer, dataloaders, num_cols=num_cols, label_ids=label_ids)
+        # classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True) #, label_col_prefix=label_col_id)
+        # num_cols = classification_info["num_cols"]
+        # label_ids = classification_info["label_ids"]
+        model_interface = ModelTrainerInterface(cfg.model, tokenizer, dataloaders)
 
     else:
         # todo this doesnt work
         data_collator = datacollator.TransDataCollatorForLanguageModeling(
             tokenizer=tokenizer, mlm=True, mlm_probability=cfg.mask_prob
         )
-        model_interface = trainer_utils.get_trainer(cfg.model, tokenizer, dataloaders, num_cols=num_cols, label_ids=label_ids)
+        model_interface = ModelTrainerInterface(cfg.model, tokenizer, dataloaders, num_cols=num_cols, label_ids=label_ids)
 
-    model = model_interface.get_model()
+    model = model_interface.model
     model_size = sum(t.numel() for t in model.parameters())
     vocab_size = len(tokenizer.vocab)
     log.info(f"Model Name: {model.model.name_or_path}")
@@ -101,7 +113,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Vocab size: {vocab_size}")
 
     log.info(f"Loading complete.  Running training")
-    train_metrics = model_interface.train()
+    train_metrics = model_interface.train(dataloaders["train"])
     model_path = train_metrics["statedict_path"]
     log.info(f"Saving to {model_path}")
 

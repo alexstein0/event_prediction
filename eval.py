@@ -45,7 +45,7 @@ def main_eval(cfg, setup=None):
     # PROCESS DATA
     log.info(f"PROCESS DATASET")
     tokenized_string_dataset = tokenized_data["input_ids"]
-    train_loader, val_loader = data_utils.get_dataloader(cfg.model, tokenizer, tokenized_string_dataset)
+    train_loader, val_loader = data_utils.prepare_dataloaders(cfg.model, tokenizer, tokenized_string_dataset)
     dataloaders = {"test": val_loader}
     log.info(f"Num test loader batches: {len(val_loader)}")
     log.info(f"Dataloader batch size: {val_loader.batch_size}")
@@ -63,19 +63,20 @@ def main_eval(cfg, setup=None):
         classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True)
         num_cols = classification_info["num_cols"]
         label_ids = classification_info["label_ids"]
-        model = trainer_utils.get_trainer(cfg.model, tokenizer, dataloaders, num_cols=num_cols, label_ids=label_ids)
+        model_interface = trainer_utils.get_trainer(cfg.model, tokenizer, dataloaders, num_cols=num_cols, label_ids=label_ids)
 
     else:
         raise NotImplementedError()
 
-    log.info(f"Loading complete.  Running Eval")
-
+    model = model_interface.get_model()
     model_size = sum(t.numel() for t in model.parameters())
-    vocab_size = len(tokenizer.get_vocab())
-    log.info(f"Model Name: {model.name_or_path}")
+    vocab_size = len(tokenizer.vocab)
+    log.info(f"Model Name: {model.model.name_or_path}")
     log.info(f"Model size: {model_size / 1000 ** 2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
-    losses = model.test()
+
+    log.info(f"Loading complete.  Running Eval")
+    losses = model_interface.test()
 
     return {}
 

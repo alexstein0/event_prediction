@@ -7,6 +7,7 @@ __all__ = [
     "GenericDataProcessor"
 ]
 
+
 def get_data_processor(data_cfg) -> GenericDataProcessor:
     if data_cfg.data_processor == "ibm_fraud_transaction":
         return IbmFraudTransactionDataProcessor(data_cfg)

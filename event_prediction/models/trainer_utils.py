@@ -24,7 +24,8 @@ from transformers import DataCollatorForLanguageModeling, AutoTokenizer
 log = logging.getLogger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-metric = BinaryAUROC(thresholds=None)
+# metric = BinaryAUROC(thresholds=None)
+metric = BinaryAUROC(thresholds=None, compute_on_cpu=True)
 
 
 class LightingWrapper(L.LightningModule):
@@ -44,7 +45,7 @@ class LightingWrapper(L.LightningModule):
     """
 
     def __init__(self, model, loss_fn=None, optim=None, lr_scheduler=None, grad_accum_batches=1,
-                 num_cols: int = None, label_ids: Dict[str, int] = None):
+                 num_cols: int = None, label_ids: Dict[str, int] = None, row_id: int = -1):
         super().__init__()
         self.model = model
         self.loss_fn = loss_fn
@@ -53,11 +54,12 @@ class LightingWrapper(L.LightningModule):
         self.grad_accum_batches = grad_accum_batches
         self.cols = num_cols
         self.label_ids = label_ids
+        self.row_id = row_id
 
     def forward(self, X):
         """Required LightningModule method."""
         return self.model(X)
-    
+
     def configure_optimizers(self):
         """Required LightningModule method."""
         lr_sched_cfg = {
@@ -68,7 +70,7 @@ class LightingWrapper(L.LightningModule):
         return {"optimizer": self.optim, "lr_scheduler": self.lr_scheduler}
 
     def training_step(self, batch, batch_idx):
-        """Required LightningModule method. 
+        """Required LightningModule method.
         Gets called from .fit() and automatically handles .to(device), .zero_grad(), .backward(), and .step()"""
         metric_dict = get_metrics(self, batch)
 
@@ -101,6 +103,23 @@ class LightingWrapper(L.LightningModule):
 
         return loss
 
+    def test_step(self, batch, batch_idx):
+        """Required LightningModule method.
+        Gets called from .fit() and automatically handles .eval() and calls mentioned in training_step()"""
+        metric_dict = get_metrics(self, batch)
+
+        loss = metric_dict["loss"]
+        perplexity = metric_dict["perplexity"]
+        auc = metric_dict["auc"]
+        accuracy = metric_dict["accuracy"]
+
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_perplexity", perplexity, prog_bar=True)
+        self.log("test_auc", auc, prog_bar=True)
+        self.log("test_accuracy", accuracy, prog_bar=True)
+
+        return loss
+
     # def get_loss(self, batch: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     #     """
     #     Helper function for computing loss.
@@ -120,7 +139,7 @@ class LightingWrapper(L.LightningModule):
     #     targets = rearrange(targets, 'b n -> (b n)')  # (b, n) -> (b*n)
     #     loss = self.loss_fn(logits, targets)
     #     return loss
-    
+
     @staticmethod
     def extract_statedict(ckpt_path: str) -> Dict:
         """Helper function for extracting the statedict from a LightningModule checkpoint."""
@@ -138,7 +157,8 @@ class ModelTrainerInterface:
         data_loaders: Dict[str, DataLoader],
         datacollator: DataCollatorForLanguageModeling = None,
         num_cols: int = None,
-        label_ids: Dict[str, int] = None
+        label_ids: Dict[str, int] = None,
+        row_id: int = -1,
     ):
         """
         """
@@ -184,6 +204,9 @@ class ModelTrainerInterface:
         except ValueError as e:
             log.warning(f"Expected 'linear' or 'cosine' but got {cfg.lr_scheduler} so cannot train. {e}")
             lr_scheduler = None
+        except TypeError as e:
+            lr_scheduler = None
+            log.warning(f"Cannot init lr_scheduler {e}")
 
         # if pretrained, add state dict
         if cfg.state_dict_path is not None:
@@ -192,7 +215,7 @@ class ModelTrainerInterface:
             state_dict = torch.load(path, device)
             model.load_state_dict(state_dict)
             model.eval()
-            self.wrapped_model = LightingWrapper(model, loss_fn, optim, lr_scheduler, cfg.grad_accum_batches, num_cols, label_ids)
+            self.wrapped_model = LightingWrapper(model, loss_fn, optim, lr_scheduler, cfg.grad_accum_batches, num_cols, label_ids, row_id)
             log.info(f"Loaded model from state_dict: {cfg.state_dict_path}")
         elif cfg.load_checkpoint_path is not None:
             # load from .ckpt
@@ -201,7 +224,7 @@ class ModelTrainerInterface:
             log.info(f"Not using pth, will use ckpt within Lightning")
         else:
             # not loaded from checkpoint
-            self.wrapped_model = LightingWrapper(model, loss_fn, optim, lr_scheduler, cfg.grad_accum_batches, num_cols, label_ids)
+            self.wrapped_model = LightingWrapper(model, loss_fn, optim, lr_scheduler, cfg.grad_accum_batches, num_cols, label_ids, row_id)
 
         # todo is this going to work for test only?
         self.trainer = L.Trainer(
@@ -259,13 +282,14 @@ def get_trainer(
     dataloaders: Dict[str, DataLoader],
     datacollator: DataCollatorForLanguageModeling = None,
     num_cols: int = None,
-    label_ids: Dict[str, int] = None
+    label_ids: Dict[str, int] = None,
+    row_id: int = -1,
 ):
     """
     Return an object that wraps a model, data, and optimization code so we can
     call .train() on it runs and saves checkpoints.
     """
-    return ModelTrainerInterface(cfg, tokenizer, data_loaders=dataloaders, datacollator=datacollator, num_cols=num_cols, label_ids=label_ids)
+    return ModelTrainerInterface(cfg, tokenizer, data_loaders=dataloaders, datacollator=datacollator, num_cols=num_cols, label_ids=label_ids, row_id=row_id)
 
 
 #
@@ -338,6 +362,7 @@ def get_metrics(wrapper, batch) -> Dict[str, torch.Tensor]:
     logits = wrapper.model(inputs).logits  # (b, n, v)
 
     # CrossEntropyLoss was written for classical classification using batch_size x num_classes, so we flatten the token dimension into the batch dimension
+    inputs_flattened = rearrange(inputs, 'b n -> (b n)')  # (b, n) -> (b*n)
     logits_flattened = rearrange(logits, 'b n v -> (b n) v')  # (b, n, v) -> (b*n, v)
     targets_flattened = rearrange(targets, 'b n -> (b n)')  # (b, n) -> (b*n)
     loss = wrapper.loss_fn(logits_flattened, targets_flattened)
@@ -348,9 +373,9 @@ def get_metrics(wrapper, batch) -> Dict[str, torch.Tensor]:
 
     auc = 0
     accuracy = 0
-    if wrapper.cols is not None and wrapper.label_ids is not None:
+    if wrapper.label_ids is not None and wrapper.row_id >= 0:
         # todo flattened?
-        auc, accuracy = get_auc_and_perplexity(logits_flattened, targets_flattened, wrapper.cols, wrapper.label_ids)
+        auc, accuracy = get_auc_and_perplexity(inputs_flattened, logits_flattened, targets_flattened, wrapper.label_ids, wrapper.row_id)
 
     return {"loss": loss,
             "perplexity": perplexity,
@@ -358,7 +383,7 @@ def get_metrics(wrapper, batch) -> Dict[str, torch.Tensor]:
             "auc": auc}
 
 
-def get_auc_and_perplexity(logits: torch.Tensor, targets: torch.Tensor, num_cols: int, label_ids: Dict[str, int]):
+def get_auc_and_perplexity(inputs: torch.Tensor, logits: torch.Tensor, targets: torch.Tensor, label_ids: Dict[str, int], row_id: int):
     # Evaluate generated data as a classification-style problem
     # Here we assume that the last token in each transaction is the one we want to evaluate - the "label".
     # We select the logits and targets for that token position over the context window, then convert the
@@ -366,8 +391,12 @@ def get_auc_and_perplexity(logits: torch.Tensor, targets: torch.Tensor, num_cols
     # minus 1 because zero-indexed, minus 2 because we want the logits from the token prior to the label token.
     # In our data preparation we align inputs and targets so we don't need to offset them here.
     # That is different from default HF behavior. TODO make it so it doesnt rely on this
-    selected_logits = logits[num_cols - 2:: num_cols]  # (b*n, v) -> (b*n/tokens_per_trans, v)
-    selected_targets = targets[num_cols - 2:: num_cols]  # (b*n) -> (b*n/tokens_per_trans)
+
+    # selected_logits = logits[num_cols - 2:: num_cols]  # (b*n, v) -> (b*n/tokens_per_trans, v)
+    # selected_targets = targets[num_cols - 2:: num_cols]  # (b*n) -> (b*n/tokens_per_trans)
+    labels = (inputs == row_id).nonzero(as_tuple=True)[0] - 2
+    selected_logits = logits[labels]
+    selected_targets = targets[labels]
 
     # Convert logits over all vocabulary to fraud/not-fraud probability for use in accuracy
     not_fraud_id = label_ids["False"]

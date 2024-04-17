@@ -9,7 +9,7 @@ import hydra
 from hydra.utils import get_original_cwd
 
 import event_prediction
-from event_prediction import data_utils, get_data_processor
+from event_prediction import data_utils, get_data_processor, data_preparation
 import multiprocessing
 
 log = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ def main_process_data(cfg, setup=None) -> Dict:
     dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, cfg.save_tar, cfg.save_csv)
     data_processor = get_data_processor(cfg.data)
     log.info(f"DATASET LOADED")
-    dataset = data_utils.preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
+    dataset = data_preparation.preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
     log.info(f"DATASET processed")
 
     unk_token = "[UNK]"
@@ -28,9 +28,13 @@ def main_process_data(cfg, setup=None) -> Dict:
 
     trainer = trainers.WordLevelTrainer(
         vocab_size=cfg.tokenizer.vocab_size,
-        special_tokens=['[PAD]', unk_token]
+        special_tokens=['[PAD]',
+                        unk_token,
+                        # '[ROW]'
+                        ]
         # special_tokens=list(set(special_token_args.values()))
     )
+
     def data_generator(batch_size=1024):
 
         len_dataset = len(dataset)
@@ -51,10 +55,15 @@ def main_process_data(cfg, setup=None) -> Dict:
         # **special_token_args,
     )
 
-    wrapped_tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
+    wrapped_tokenizer.add_special_tokens(
+        {'pad_token': '[PAD]',
+         'unk_token': '[UNK]',
+         # 'eos_token': '[ROW]'
+         }
+    )
 
     log.info("TRAINING COMPLETE")
-    log.info(f"num cols: {len(data_processor.get_all_cols())} | {data_processor.get_all_cols()}")
+    log.info(f"num cols: {len(data_processor.get_data_cols())} | {data_processor.get_data_cols()}")
     log.info(f"Vocab_size: {tokenizer.get_vocab_size()}")
     tok_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
     files1 = wrapped_tokenizer.save_pretrained(tok_name)

@@ -57,7 +57,7 @@ class GenericDataProcessor:
         return self._all_cols
 
     def get_data_cols(self):
-        return [x for x in self.get_all_cols() if x not in self.get_index_columns() + self.get_label_columns()]
+        return [x for x in self.get_all_cols() if x not in self.get_index_columns()] # + self.get_label_columns()
 
     def get_index_columns(self):
         return self._index_columns

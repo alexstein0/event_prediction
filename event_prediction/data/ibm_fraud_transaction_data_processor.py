@@ -12,8 +12,8 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
         """Return a normalized dataframe"""
 
         # todo delete
-        # data['User'] = np.random.randint(0, 10, size=len(data))
-        # data['Card'] = np.random.randint(0, 10, size=len(data))
+        data['User'] = np.random.randint(0, 10, size=len(data))
+        data['Card'] = np.random.randint(0, 10, size=len(data))
 
         # Pre conversion string cleaning
         data["Amount"] = convert_dollars_to_floats(data["Amount"],  log_scale=False)

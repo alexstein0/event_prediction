@@ -20,6 +20,7 @@ from omegaconf import DictConfig
 from torch.utils import data
 from tqdm import tqdm
 from datasets import Dataset, load_dataset
+from event_prediction import utils
 
 log = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ def convert_to_bool(X: pd.Series) -> pd.Series:
            'false': False}
     X = X.str.lower()
     X = X.replace(rep)
-    return X.astype('bool')
+    return X.astype('str')
 
 def convert_dollars_to_floats(X: pd.Series, log_scale: bool = True) -> pd.Series:
     X = X.str.replace("$", "").astype(float)
@@ -439,154 +440,6 @@ def read_json(file_dir: str, file_name: str) -> Dict | List[Dict]:
             raise e
     return data
 
-
-def get_dataloader(cfg: DictConfig, tokenizer, tokens: List[str] | List[int], is_ids: bool = True, random_split: bool = False) -> Tuple[data.DataLoader, data.DataLoader]:
-    """
-    Takes a string of raw text tokens and a tokenizer for encoding and returns a PyTorch 
-    Dataloader object with examples, labels batches ready for training.
-    The labels can be either the next token in the sequence (causal language modeling)
-    or a masked token (masked language modeling).
-    """
-    if not is_ids:
-        id_tokens = tokens.map(lambda example: tokenizer(example["text"]), batched=True)["input_ids"]
-    else:
-        id_tokens = tokens
-
-    id_tokens = torch.tensor(id_tokens, dtype=int)
-
-    if cfg.training_objective == "causal":
-        dataset = NextTokenPredictionDataset(id_tokens, cfg.context_length, tokenizer.pad_token_id)
-    elif cfg.training_objective == "masked":
-        dataset = MaskedLanguageModelingDataset(id_tokens, n_cols)
-    else:
-        raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
-    
-    train_loader, val_loader = to_dataloader(cfg, dataset, random_split=random_split)
-    return train_loader, val_loader
-
-
-def preprocess_dataset(dataset, data_processor, numeric_bucket_amount: int = 5) -> datasets.Dataset:
-
-    dataset = data_processor.normalize_data(dataset)
-    for col in data_processor.get_numeric_columns():
-        dataset[col], buckets = convert_to_binary_string(dataset[col], numeric_bucket_amount)
-
-    col_id = 0
-    for col in data_processor.get_all_cols():
-        dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
-        col_id += 1
-
-    dataset = Dataset.from_pandas(dataset)
-
-    # dataset = dataset.map(lambda example: example, batched=True)
-    try:
-        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
-    except:
-        threads = 1
-
-    def concat_columns(example):
-        new_ex = {}
-        new_ex["text"] = " ".join(example.values())
-        return new_ex
-
-    dataset = dataset.map(concat_columns, num_proc=threads)
-    dataset = dataset.select_columns("text")
-    return dataset
-
-
-def tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float=.0) -> DatasetDict | Dataset:
-    def preprocess_function(examples):
-        # TODO examples may need to be changed here depended on dataset
-        tokenized = tokenizer(examples["text"])
-        return tokenized
-
-    # if test_split > 0:
-    #     print("splitting")
-    #     data = data.train_test_split(test_size=test_split)  # split data so there is a test split for eval
-    #
-    try:
-        threads = max(os.cpu_count(), multiprocessing.cpu_count(), 1)
-    except:
-        threads = 1
-
-    tokenized_data = data.map(
-        preprocess_function,
-        batched=True,
-        num_proc=threads,
-        # remove_columns=data["train"].column_names,
-    )
-    return tokenized_data
-
-def get_data_and_tokenize(cfg, data_processor, tokenizer):
-    dataset = get_data_from_raw(cfg.data, cfg.data_dir, False, False)
-    dataset = preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
-    tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
-    log.info("DATASET PROCESSED, BEGINNING TOKENIZATION")
-    tokenized_data = tokenize_data(dataset, tokenizer)
-    log.info("DATASET TOKENIZED")
-    return tokenized_data
-
-
-
-def to_dataloader(cfg: DictConfig, dataset: data.Dataset, random_split: bool = False) -> Tuple[data.DataLoader, data.DataLoader]:
-    """Given a PyTorch Dataset and config for batch size, return a Pytorch DataLoader."""
-    n = len(dataset)
-    train_size = int(cfg.train_ratio * n)
-    val_size = n - train_size
-    if random_split:
-        train_data, val_data = data.random_split(dataset, [train_size, val_size])
-    else:
-        train_data = data.Subset(dataset, range(0, train_size))
-        val_data = data.Subset(dataset, range(train_size, n))
-    # TODO THIS DOESNT WORK, VAL DATA GETS MESSED UP?  tried adding.dataset
-    train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
-    val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
-    return train_loader, val_loader
-
-
-class NextTokenPredictionDataset(data.Dataset):
-    """
-    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language
-    Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
-    """
-    def __init__(self, data: torch.Tensor, context_length: int, pad_id: int):
-        self.data = data
-        self.flattened_data = data.reshape(-1)
-        self.context_length = context_length
-        self.flattened_data = torch.cat([self.flattened_data, torch.tensor([pad_id])])
-
-    def __len__(self) -> int:
-        return len(self.flattened_data) // self.context_length
-
-    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        # The corresponding label for each example is a chunk of tokens of the same size,
-        # but shifted one token to the right.
-
-        # TODO: It is a arbitrary design choice whether to do the shift of the labels here
-        # or in the loss function. Huggingface's DataCollator is designed to let the loss
-        # function do the shifting, so we need to change this if we want to be compatible with that.
-        start = i * self.context_length
-        x = self.flattened_data[start : start + self.context_length]
-        y = self.flattened_data[start + 1 : start + self.context_length + 1]
-        return x, y
-
-
-class MaskedLanguageModelingDataset(data.Dataset):
-    """
-    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language
-    Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
-    """
-
-    def __init__(self, data: torch.Tensor, n_cols: int):
-        self.data = data
-        self.n_cols = n_cols
-
-    def __len__(self) -> int:
-        return len(self.data) // self.n_cols
-
-    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        # todo
-        return x, y
 
 class TqdmToLogger(tqdm):
     """File-like object to redirect tqdm output to a logger."""
