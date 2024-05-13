@@ -3,6 +3,7 @@ from typing import List
 
 from .data_utils import convert_to_str, remove_spaces, convert_to_bool
 
+
 class GenericDataProcessor:
     def __init__(self, data_cfg):
         self._index_columns = list(data_cfg.index_columns)
@@ -19,11 +20,8 @@ class GenericDataProcessor:
         all_cols.extend(self._binary_columns)
         all_cols.extend([static_col["name"] for static_col in self._static_numeric_columns])
         all_cols.extend(self._label_columns)
-        # self._all_cols = list(set(self._all_cols)) # does not consider ordering of set
         self._all_cols = []
-        for x in all_cols:
-            if x not in self._all_cols:
-                self._all_cols.append(x)
+        [self._all_cols.append(x) for x in all_cols if x not in self._all_cols]
 
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         raise NotImplementedError()
@@ -57,7 +55,14 @@ class GenericDataProcessor:
         return self._all_cols
 
     def get_data_cols(self):
-        return [x for x in self.get_all_cols() if x not in self.get_index_columns()] # + self.get_label_columns()
+        res = []
+        [res.append(x) for x in self.get_all_cols() if x not in self.get_index_columns() and x not in res]  # + self.get_label_columns()
+        return res
+
+    def get_non_index_columns(self):
+        res = []
+        [res.append(x) for x in self.get_data_cols() if x not in self.get_index_columns() and x not in res]  # + self.get_label_columns()
+        return res
 
     def get_index_columns(self):
         return self._index_columns
@@ -76,3 +81,32 @@ class GenericDataProcessor:
 
     def get_binary_columns(self):
         return self._binary_columns
+
+    def summarize_dataset(self, data: pd.DataFrame, bucket_amount: int = -1):
+        print(f"Dataset has {len(data)} rows and columns: {data.columns}")
+        for col in self.get_index_columns():
+            unique_values = data[col].unique()
+            print(f"Index col {col} has {len(unique_values)} unique values")
+
+        for col in self.get_categorical_columns():
+            unique_values = data[col].unique()
+            print(f"Categorical col {col} has {len(unique_values)} unique values")
+
+        for col in self.get_binary_columns():
+            unique_values = data[col].unique()
+            assert len(unique_values) == 2
+            print(f"Binary col {col}")
+
+        for col in self.get_numeric_columns():
+            dc = data[col]
+            mean = float(dc.mean())
+            std = float(dc.mean())
+            min_value = float(dc.min())
+            max_value = float(dc.max())
+            print(f"Numeric col {col} has stats: mean: {mean:6.3}, std: {std:6.3}, min_value: {min_value:6.3}, max_value: {max_value:6.3}")
+            if bucket_amount > 0:
+                print(f"\tWill create ~{2**bucket_amount} buckets")
+
+        for col in self.get_label_columns():
+            unique_values = data[col].unique()
+            print(f"Label col {col} has {len(unique_values)} unique values")

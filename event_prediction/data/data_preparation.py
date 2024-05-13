@@ -1,3 +1,4 @@
+import pandas as pd
 from transformers import DataCollatorForLanguageModeling
 from typing import List, Union, Dict, Tuple
 import torch
@@ -14,25 +15,34 @@ import logging
 
 from .data_utils import get_data_from_raw, convert_to_binary_string
 import random
+import json
 
 log = logging.getLogger(__name__)
+threads = utils.get_cpus()
+
 
 # THIS CODE IS COPIED FROM FATA-TRANS  This is the base class for masked collator when no temporal component and no static/dynamic split
 class TransDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
     def __call__(self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-        batch = _torch_collate_batch(examples, self.tokenizer)
-        sz = batch.shape
+        input_ids = [x["input_ids"] for x in examples]
+        # labels = [x["targets"] for x in examples]
+        mask = [x["mask"] for x in examples]
+        input_ids = _torch_collate_batch(input_ids, self.tokenizer)
+        # labels = _torch_collate_batch(labels, self.tokenizer)
+        mask = _torch_collate_batch(mask, self.tokenizer)
+        sz = input_ids.shape
         if self.mlm:
-            batch = batch.view(sz[0], -1)
+            batch = input_ids.view(sz[0], -1)
             inputs, labels = self.mask_tokens(batch)
             # print("MLM label shape: ", labels.view(sz).shape)
             # print("MLM batch shape: ", inputs.view(sz).shape)
             return {"input_ids": inputs.view(sz), "masked_lm_labels": labels.view(sz)}
         else:
-            labels = batch.clone().detach()
-            if self.tokenizer.pad_token_id is not None:
-                labels[labels == self.tokenizer.pad_token_id] = -100
-            return {"input_ids": batch, "labels": labels}
+            # labels = labels.clone().detach()
+            # if self.tokenizer.pad_token_id is not None:
+            #     labels[labels == self.tokenizer.pad_token_id] = -100
+            # return {"input_ids": input_ids, "targets": labels, "mask": mask}
+            return {"input_ids": input_ids, "mask": mask}
 
     def mask_tokens(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -107,26 +117,29 @@ class FastDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
         return batch
 
 
-def prepare_dataloaders(tokenized_dataset: DatasetDict, tokenizer, cfg: DictConfig) -> Dict[str, data.DataLoader]:
+def prepare_dataloaders(tokenized_dataset: DatasetDict | Dataset, tokenizer, cfg: DictConfig) -> Dict[str, data.DataLoader]:
     """
     Takes in pretokenized hf dataset
     """
 
     # train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     # val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
+    if isinstance(tokenized_dataset, Dataset):
+        test_split = cfg.model.train_test_split
+        split_by_column = "User"
+        tokenized_dataset = create_train_test_split_by_column(tokenized_dataset, test_split, split_by_column)
     train_data = tokenized_dataset["train"]
-    val_data = tokenized_dataset["train"]
+    val_data = tokenized_dataset["test"]
     train_loader = prepare_pretraining_dataloader(train_data, tokenizer, cfg)
-    # val_loader = prepare_validation_dataloader(val_data, tokenizer)
-    val_loader = prepare_pretraining_dataloader(val_data, tokenizer, cfg)
-    return {"train": train_loader, "val": val_loader}
+    val_loader = prepare_validation_dataloader(val_data, tokenizer, cfg)
+    return {"train": train_loader, "test": val_loader}
 
 
 def prepare_pretraining_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -> data.DataLoader:
 
     if cfg.model.training_objective == "causal":
-        tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset, cfg.model.context_length, tokenizer.pad_token_id)
-        collate_fn = FastDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
+        tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset, cfg.model.seq_length, tokenizer.pad_token_id, cfg.model.randomize_order, cfg.model.fixed_cols)
+        collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
 
     elif cfg.model.training_objective == "masked":
         tokenized_dataset = MaskedLanguageModelingDataset(tokenized_dataset, n_cols)
@@ -134,33 +147,61 @@ def prepare_pretraining_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -
     else:
         raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
 
-    loader = to_dataloader(tokenized_dataset, collate_fn, cfg.model.batch_size)
+    loader = to_train_dataloader(tokenized_dataset, collate_fn, cfg.model.batch_size)
     return loader
 
 
-def preprocess_dataset(dataset, data_processor, numeric_bucket_amount: int = 5) -> datasets.Dataset:
-    dataset = data_processor.normalize_data(dataset)
-    for col in data_processor.get_numeric_columns():
-        dataset[col], buckets = convert_to_binary_string(dataset[col], numeric_bucket_amount)
+def prepare_validation_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -> data.DataLoader:
 
-    # row_key = "NEW_ROW"
-    row_token = "[ROW]"
-    # dataset[row_key] = row_token
-    #
-    col_id = 0
+    if cfg.model.training_objective == "causal":
+        tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset, cfg.model.seq_length, tokenizer.pad_token_id)
+        collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
+
+    elif cfg.model.training_objective == "masked":
+        tokenized_dataset = MaskedLanguageModelingDataset(tokenized_dataset, n_cols)
+        collate_fn = FastDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=True)
+    else:
+        raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
+
+    loader = to_val_dataloader(tokenized_dataset, collate_fn, cfg.model.batch_size)
+    return loader
+
+
+def preprocess_dataset(dataset: pd.DataFrame, data_processor, numeric_bucket_amount: int = 5) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    dataset = data_processor.normalize_data(dataset)
+    data_processor.summarize_dataset(dataset, numeric_bucket_amount)
+    for col in data_processor.get_numeric_columns():
+        strings, buckets = convert_to_binary_string(dataset[col], numeric_bucket_amount)
+        if len(strings[0]) > 0:
+            dataset[col] = strings  # maybe a cleaner way to do this
+
     # todo right here is where we would extract the labels as well.
     #  Here we prepare string to be tokenized and below we will create string to tokenize
     all_cols = data_processor.get_data_cols()
     # all_cols.append(row_key)
+    # todo right now the order of the columns must be the same at tokenization train/test
+    dataset, col_to_id_dict = get_col_to_id_dict(all_cols, dataset)
+    return dataset, col_to_id_dict
+
+
+def get_col_to_id_dict(all_cols: List[str], dataset: pd.DataFrame = None):
+    col_id = 0
+    col_to_id_dict = {}
     for col in all_cols:
-        dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
+        col_to_id_dict[col] = col_id
+        if dataset is not None:
+            dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
         col_id += 1
 
-    dataset = Dataset.from_pandas(dataset)
+    return dataset, col_to_id_dict
+
+
+def convert_to_huggingface(dataset: pd.DataFrame, data_processor) -> datasets.Dataset:
+    row_token = "[ROW]"
+    columns = dataset.columns
+    dataset = Dataset.from_pandas(dataset, preserve_index=False)
 
     # dataset = dataset.map(lambda example: example, batched=True)
-    threads = utils.get_cpus()
-
     def concat_columns(example):
         new_ex = {}
         # print([example[x] for x in example.keys() if x not in data_processor.get_index_columns()])
@@ -175,13 +216,72 @@ def preprocess_dataset(dataset, data_processor, numeric_bucket_amount: int = 5) 
     return dataset
 
 
-def split_data_by_columns(data: Dataset, test_split: float, split_by_column: str):
-    # todo take in multiple columns (like user and card)
+def get_start_end_indices(ds: Dataset) -> Dict[str, List[int]]:
+    ranges = {}
+    current_user_id = None
+    start = 0
+    cur = 0
+
+    for row in ds:
+        if row["User"] != current_user_id:
+            if cur > 0:
+                ranges[current_user_id] = [start, cur]
+            current_user_id = row["User"]
+            start = cur
+        cur += 1
+
+    ranges[current_user_id] = [start, cur]
+    return ranges
+
+
+def split_data_by_column(dataset: Dataset, split_col: str):
+    start_end_dict = get_start_end_indices(dataset.select_columns([split_col]))
+    output_dict = {}
+    for k, v in start_end_dict.items():
+        user = dataset.select(range(v[0], v[1]))
+        output_dict[str(k)] = user
+    dataset = DatasetDict(output_dict)
+    return dataset
+
+
+def create_train_test_split(dataset: datasets.Dataset | DatasetDict, test_split: float, col: str = None) -> datasets.DatasetDict:
+    # TODO make split col variable
+    if col is not None:
+        dataset = create_train_test_split_by_column(dataset, test_split, col)
+    elif isinstance(dataset, datasets.DatasetDict):
+        dataset = create_train_test_split_by_keys(dataset, test_split)
+    else:
+        dataset = dataset.train_test_split(test_size=test_split)  # split data so there is a test split for eval
+    return dataset
+
+
+def load_train_test_split(path: str) -> Dict[str, List[str]]:
+    with open(os.path.join(path, "train_test_split.json"), 'r') as f:
+        split = json.load(f)
+    return split
+
+
+def create_train_test_split_by_column(data: Dataset, test_split: float, split_by_column: str):
+    # splitting dataset by column
+    log.info(f"Splitting by column {split_by_column}")
     all_options = data.unique(split_by_column)
-    subset_size = int(len(all_options) * test_split)
+    subset_size = max(1, int(len(all_options) * test_split))
     test_ids = random.sample(all_options, subset_size)
-    test = data.filter(lambda example: example[split_by_column] in test_ids)
-    train = data.filter(lambda example: example[split_by_column] not in test_ids)
+    test = data.filter(lambda example: example[split_by_column] in test_ids, num_proc=threads)
+    train = data.filter(lambda example: example[split_by_column] not in test_ids, num_proc=threads)
+
+    return DatasetDict({"train": train, "test": test})
+
+
+def create_train_test_split_by_keys(data: DatasetDict, test_split: float) -> DatasetDict:
+    # Right now the dictionary keys will be separated
+    log.info(f"Splitting by keys")
+    all_options = data.keys()
+    subset_size = max(1, int(len(all_options) * test_split))
+    test_ids = random.sample(all_options, subset_size)
+    train = DatasetDict({k: v for k, v in data.items() if k not in test_ids})
+    test = DatasetDict({k: v for k, v in data.items() if k in test_ids})
+    # train = DatasetDict({'0': train['0'].select([0,1])})
 
     return DatasetDict({"train": train, "test": test})
 
@@ -191,17 +291,6 @@ def tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float = .
         # TODO examples may need to be changed here depended on dataset
         tokenized = tokenizer(examples["text"])
         return tokenized
-
-    if test_split > 0:
-        # TODO make split col variable
-        col = "User"
-        log.info(f"splitting by {col}")
-        if col is not None:
-            data = split_data_by_columns(data, test_split, col)
-        else:
-            data = data.train_test_split(test_size=test_split)  # split data so there is a test split for eval
-
-    threads = utils.get_cpus()
 
     data = data.map(
         preprocess_function,
@@ -213,29 +302,45 @@ def tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float = .
     return data
 
 
-def update_attention_mask():
-    pass
-
 def get_data_and_tokenize(cfg, data_processor, tokenizer, split=.1):
-    dataset = get_data_from_raw(cfg.data, cfg.data_dir, False, False)
-    dataset = preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
+    dataset = get_data_from_raw(cfg.data, cfg.data_dir)
+    dataset, col_to_id_dict = preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
+    dataset = convert_to_huggingface(dataset, data_processor)
     tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
     log.info("DATASET PREPROCESSED, BEGINNING TOKENIZATION")
     dataset = tokenize_data(dataset, tokenizer)
     log.info("DATASET TOKENIZED")
-    return dataset
+    return dataset, col_to_id_dict
 
 
-def to_dataloader(dataset: data.Dataset, collate_fn, batch_size: int) -> data.DataLoader:
+def save_dataset(dataset: Dataset, path: str):
+    dataset.save_to_disk(path, num_proc=threads)
+
+
+def to_train_dataloader(dataset: data.Dataset, collate_fn, batch_size: int) -> data.DataLoader:
     # todo distributed sampling?
 
     sampler = torch.utils.data.SequentialSampler(dataset)
     train_loader = data.DataLoader(dataset,
                                    batch_size=batch_size,
                                    sampler=sampler,
-                                   num_workers=utils.get_cpus(),
+                                   num_workers=threads,
                                    drop_last=True,
-                                   # collate_fn=collatefn
+                                   collate_fn=collate_fn
+                                   )
+    return train_loader
+
+
+def to_val_dataloader(dataset: data.Dataset, collate_fn, batch_size: int) -> data.DataLoader:
+    # todo distributed sampling?
+
+    sampler = torch.utils.data.SequentialSampler(dataset)
+    train_loader = data.DataLoader(dataset,
+                                   batch_size=batch_size,
+                                   sampler=sampler,
+                                   num_workers=threads,
+                                   drop_last=False,
+                                   collate_fn=collate_fn
                                    )
     return train_loader
 
@@ -246,32 +351,89 @@ class NextTokenPredictionDataset(data.Dataset):
     Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
     """
 
-    def __init__(self, tokenized_dataset: Dataset, context_length: int, pad_id: int):
-        data = torch.tensor(tokenized_dataset["input_ids"], dtype=torch.long)
-        # last_col_mask = torch.tensor(tokenized_dataset["attention_mask"], dtype=torch.long)
-        last_col_mask = torch.zeros_like(data)
-        last_col_mask[:, -3] = 1  # second to last column is where we will do the attention mask
-
-        self.flattened_data = data.reshape(-1)
-        self.last_col_mask = last_col_mask.reshape(-1)
-        self.context_length = context_length
-        # self.flattened_data = torch.cat([self.flattened_data, torch.tensor([pad_id])])
+    def __init__(self, tokenized_dataset: Dataset, seq_length: int, pad_id: int, randomize_order: bool = False, fixed_cols: int = 2):
+        self.pad_id = pad_id
+        self.seq_length = seq_length  # number of ROWS in a sequence
+        self.num_rows = sum([x for x in tokenized_dataset.num_rows.values()])
+        self.user_ids = list(tokenized_dataset.keys())  # needs to be split by user already
+        self.num_columns = len(tokenized_dataset[self.user_ids[0]]["input_ids"][0])
+        self.data, self.label_mask = self.prepare_data(self.user_ids, tokenized_dataset)
+        self.randomize_order = randomize_order
+        self.fixed_cols = fixed_cols
 
     def __len__(self) -> int:
-        return len(self.flattened_data) // self.context_length
+        return self.num_rows // self.seq_length  # consider end row
 
     def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
         # The corresponding label for each example is a chunk of tokens of the same size,
         # but shifted one token to the right.
 
         # TODO: It is a arbitrary design choice whether to do the shift of the labels here
+        # todo split by user?
         # or in the loss function. Huggingface's DataCollator is designed to let the loss
         # function do the shifting, so we need to change this if we want to be compatible with that.
-        start = i * self.context_length
-        x = self.flattened_data[start: start + self.context_length]
-        y = self.flattened_data[start + 1: start + self.context_length + 1]
-        mask = self.last_col_mask[start: start + self.context_length]
-        return {"input_ids": x, "targets": y, "mask": mask}
+        # start = i * self.seq_length
+        # x = self.data[start: start + self.seq_length]
+        # y = self.data[start + 1: start + self.seq_length + 1]
+        # mask = self.label_mask[start: start + self.seq_length]
+        # return {"input_ids": x, "targets": y, "mask": mask}
+        x = self.data[i, :]
+        # y = self.data[i, 1:]
+        mask = self.label_mask[i, :]
+        if self.randomize_order:
+            index = torch.arange(x.shape[0])
+            for s in range(self.seq_length):
+                start = self.num_columns * s
+                index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
+            print(x)
+            x = x[index]
+            print(x)
+            mask = mask[index]
+        return {"input_ids": x, "mask": mask}
+
+    def prepare_data(self, user_ids: List[str], tokenized_dataset: Dataset):
+        pad_row = [self.pad_id for _ in range(self.num_columns)]  # this is a dummy pad row to add when number of rows is not multiple of sequence length
+        all_sequences = []
+        all_labels = []
+        total_transactions = 0
+        for uid in user_ids:
+            # user_rows = tokenized_dataset.filter(lambda example: example["User"] == uid, num_proc=threads)  # todo this is very slow, better to have the data already giving right rows?
+            # user_rows = torch.tensor(user_rows["input_ids"], dtype=torch.long)
+            user_rows = torch.tensor(tokenized_dataset[uid]["input_ids"], dtype=torch.long)
+            num_rows = user_rows.shape[0]
+            total_transactions += (num_rows // self.seq_length) + int((num_rows % self.seq_length) > 0)  # sanity check
+
+            # self.randomize_order = True
+            # if self.randomize_order:
+            #     index = torch.zeros_like(user_rows)
+            #     index[:, -1] = self.num_columns-1
+            #     for x in range(num_rows):
+            #         index[x, :self.num_columns-1] = torch.randperm(self.num_columns-1)
+            # else:
+            #     index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
+            index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
+
+            user_rows = user_rows.gather(1, index)
+            last_col_mask = torch.zeros_like(user_rows)
+            last_col_mask[index == self.num_columns-2] = 1  # second to last column is where we will do the mask
+
+            if num_rows % self.seq_length != 0:
+                num_pad_rows = self.seq_length - (num_rows % self.seq_length)
+                pad_rows = torch.tensor(pad_row).repeat([num_pad_rows, 1])
+                user_rows = torch.cat([user_rows, pad_rows])
+                last_col_mask = torch.cat([last_col_mask, torch.zeros_like(pad_rows)])
+            assert len(user_rows) % self.seq_length == 0
+            # if num_rows_for_user < self.seq_length:  # not enough transactions for the user to fill up the seq_len window
+            #     continue
+            for starting_row_id in range(0, len(user_rows) - self.seq_length + 1, self.seq_length):  # consider not striding by seq_len
+                # add bos, eos tokens?
+                seq = user_rows[starting_row_id: starting_row_id + self.seq_length].reshape(1, -1)
+                all_sequences.append(seq)
+                labels_for_sequence = last_col_mask[starting_row_id: starting_row_id + self.seq_length].reshape(1, -1)
+                all_labels.append(labels_for_sequence)
+
+        # note that with this implementation can have multiple users in same batch but NOT in same sequence (obviously)
+        return torch.cat(all_sequences), torch.cat(all_labels)
 
 
 class MaskedLanguageModelingDataset(data.Dataset):

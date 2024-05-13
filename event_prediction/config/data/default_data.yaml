@@ -1,5 +1,9 @@
 name: ???
 
+save_name:
+
+transaction_seq_len:
+
 data_processor: ???
 
 index_columns: []
@@ -11,3 +15,9 @@ numeric_columns: []
 binary_columns: []
 
 label_columns: []
+
+raw_type: csv
+
+raw_index_columns: ${data.index_columns}
+
+consolidate_columns:

@@ -16,7 +16,8 @@ temporary_corpus: False # Save data directly into local staging dir, forget afte
 max_raw_chunk_size: 1e14
 
 # checkpointing and logging:
-print_loss_every_nth_step: 1000
+run_eval_every_nth_step: 1000
+print_loss_every_nth_step: ${impl.run_eval_every_nth_step}
 save_intermediate_checkpoints: False
 save_every_nth_step: 10_000
 
@@ -51,30 +52,3 @@ push_to_huggingface_hub: False
 hf_directoy_name: "test-crammedBERT-c5" # set a clever name here!
 
 add_env_variables:
-# should be NAME: stringval
-
-# TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE
-# TORCHINDUCTOR_MAX_AUTOTUNE_GEMM
-
-# Other constants:
-# OMP_NUM_THREADS:[number_of_physical_cores]
-# OMP_SCHEDULE:  # STATIC
-# OMP_PROC_BIND: # CLOSE
-# GOMP_CPU_AFFINITY:  # "N-M"
-# KMP_AFFINITY: # "granularity=fine,compact,1,0"
-# KMP_BLOCKTIME: # 1
-# optional_ld_preloads:
-#  - libiomp5.so
-# - jemalloc.so
-
-#
-# ### jemalloc
-# export MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:-1,muzzy_decay_ms:-1"
-# export LD_PRELOAD=/home/mingfeim/packages/jemalloc-5.2.1/lib/libjemalloc.so
-#
-# ### tcmalloc
-# export LD_PRELOAD=/home/mingfeim/packages/gperftools-2.8/install/lib/libtcmalloc.so
-
-example_token_limit: 30 # never generate more example tokens than this
-
-is_mac: False

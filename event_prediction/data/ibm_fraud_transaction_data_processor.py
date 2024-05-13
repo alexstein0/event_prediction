@@ -1,6 +1,6 @@
 from .generic_data_processor import GenericDataProcessor
 import pandas as pd
-from .data_utils import add_hours_total_minutes, convert_dollars_to_floats, add_minutes_from_last, add_is_online, remove_spaces, add_static_fields
+from .data_utils import add_hours_total_minutes, convert_dollars_to_floats, add_minutes_from_last, add_is_online, get_timestamps_from_str, add_static_fields
 import numpy as np
 
 
@@ -8,12 +8,8 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
     def __init__(self, data_cfg):
         super(IbmFraudTransactionDataProcessor, self).__init__(data_cfg)
 
-    def normalize_data(self, data: pd.DataFrame, consider_card: bool = False) -> pd.DataFrame:
+    def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Return a normalized dataframe"""
-
-        # todo delete
-        data['User'] = np.random.randint(0, 10, size=len(data))
-        data['Card'] = np.random.randint(0, 10, size=len(data))
 
         # Pre conversion string cleaning
         data["Amount"] = convert_dollars_to_floats(data["Amount"],  log_scale=False)
@@ -22,7 +18,7 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
         data = self.convert_columns_to_types(data)
 
         # add missing columns
-        data = add_hours_total_minutes(data)
+        data = add_hours_total_minutes(data, get_timestamps_from_str(data, time_col="Time"))
         data["is_online"] = add_is_online(data["Merchant City"])
 
         # sort

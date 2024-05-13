@@ -3,13 +3,9 @@ import json
 import logging
 import os
 import tarfile
+import gzip
 from typing import Dict, List, Tuple, Union
 from urllib.parse import urlparse
-
-import datasets
-from datasets import DatasetDict, Dataset
-from transformers import AutoTokenizer
-import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -24,13 +20,73 @@ from event_prediction import utils
 
 log = logging.getLogger(__name__)
 
+
 def get_huggingface_dataset(cfg):
     data_files = {"train": cfg.url}
     dataset = load_dataset("csv", data_files=data_files)
     return dataset['train']
 
 
-def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
+def bytes_to_df(bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
+    data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
+    _, ext = os.path.splitext(urlparse(cfg.url).path)
+    filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
+
+    if ext == ".tgz":
+        if save_tar_to_disk:
+            os.makedirs(data_dir, exist_ok=True)
+            write_bytes(bytes, filepath)
+        try:
+            bytes = extract_tar(bytes)
+        except tarfile.ReadError as e:
+            log.error(f"Error when trying to extract file. Double-check that the URL actually exists: {cfg.url}")
+            raise
+        if cfg.raw_type == "csv":
+            df = pd.read_csv(bytes)
+        else:
+            raise ValueError
+
+    elif ext == ".gz":
+        if save_tar_to_disk:
+            os.makedirs(data_dir, exist_ok=True)
+            write_bytes(bytes, filepath)
+        try:
+            output = []
+            with gzip.open(bytes, mode='r') as lines:
+                for line in lines:
+                    row = line.decode('utf-8')
+                    output.append(json.loads(row))
+        except tarfile.ReadError as e:
+            log.error(f"Error when trying to extract file. Double-check that the URL actually exists: {cfg.url}")
+            raise
+
+        if cfg.raw_type == "json":
+            df = pd.DataFrame.from_records(output)
+        else:
+            raise ValueError
+    else:
+        df = pd.read_csv(bytes)
+    return df
+
+
+def download_and_save_data(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
+    if cfg.url is not None:
+        bytes = download_data_from_url(cfg.url)
+        df = bytes_to_df(bytes, cfg, raw_data_dir_name, save_tar_to_disk, save_csv_to_disk)
+    else:
+        log.info(f"NO URL")
+        df = get_data_from_raw(cfg)  # already locally in raw folder just needs processing
+    if save_csv_to_disk:
+        data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
+        df.sort_values(list(cfg.raw_index_columns), inplace=True)
+        os.makedirs(data_dir, exist_ok=True)
+        filepath = os.path.join(data_dir, f"{cfg.name}.csv")
+        df.to_csv(filepath, index=False)
+        log.info(f"Saved csv to {filepath}")
+    return df
+
+
+def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
     """
     Return a dataframe of the dataset specified in the config. For a given dataset
     first we will look for it on disk, and if it is not there we will download it.
@@ -41,37 +97,36 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False,
     if os.path.exists(csv_file):
         df = pd.read_csv(csv_file)
         log.info(f"Read CSV from {csv_file}")
+    elif os.path.isdir(os.path.join(data_dir, cfg.name)):  # folder of files
+        dir = os.path.join(data_dir, cfg.name)
+        df_list = []
+        for csv_file in os.listdir(dir):
+            df_list.append(pd.read_csv(os.path.join(dir, csv_file)))
+        df = pd.concat(df_list, ignore_index=True)
     else:
         _, ext = os.path.splitext(urlparse(cfg.url).path)
         filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
-        if os.path.exists(filepath):
-            bytes = read_bytes(filepath)
-            log.info(f"Loaded bytes from to {filepath}")
-        else:
-            bytes = download_data_from_url(cfg.url)
-            log.info(f"Downloaded bytes from to {cfg.url}")
-
-        if ext == ".tgz":
-            if save_tar_to_disk:
-                os.makedirs(data_dir, exist_ok=True)
-                write_bytes(bytes, filepath)
-            try:    
-                bytes = extract(bytes)
-            except tarfile.ReadError as e:
-                log.error(f"Error when trying to extract file. Double-check that the URL actually exists: {cfg.url}")
-                raise     
-        df = pd.read_csv(bytes)
-        if save_csv_to_disk:
-            os.makedirs(data_dir, exist_ok=True)
-            filepath = os.path.join(data_dir, f"{cfg.name}.csv")
-            df.to_csv(filepath, index=False)
-            log.info(f"Saved csv to {filepath}")
+        if not os.path.exists(filepath):
+            log.info(f"Data not found at {filepath}.  First download dataset from {cfg.url} using download_and_save_data.py")
+            raise IOError
+        bytes = read_bytes(filepath)
+        log.info(f"Loaded bytes from to {filepath}")
+        df = bytes_to_df(bytes, cfg)  # dont save the data, just convert to bytes
     return df
+
+
+def save_small(data: pd.DataFrame, path: str, name: str, rows: int = 1000):
+    small_df = data.iloc[:rows]
+    path = os.path.join(path, f"{name}_small.csv")
+    small_df.to_csv(path, index=False)
+    log.info(f"Saved mini csv to {path}")
+    log.info(f"Small dataset has {small_df.shape[0]} samples")
+    return path
 
 
 def download_data_from_url(url: str) -> io.BytesIO:
     """Download a file to memory without writing it to disk"""
-    response = requests.get(url, stream=True)
+    response = requests.get(url, stream=True, verify=False)
     file_size = int(response.headers.get("Content-Length", 0))
     # Initialize a downloader with a progress bar
     downloader = TqdmToLogger(
@@ -108,9 +163,9 @@ def read_bytes(filepath: str) -> io.BytesIO:
     return io.BytesIO(content)
 
 
-def extract(data: io.BytesIO) -> io.BytesIO:
-    """Extract a tar.gz file to memory"""
-    log.info(f"Extracting tar.gz file...")
+def extract_tar(data: io.BytesIO) -> io.BytesIO:
+    """Extract a .tgz file to memory"""
+    log.info(f"Extracting .tgz file...")
     with tarfile.open(fileobj=data, mode='r:gz') as tar:
         num_files = len(tar.getmembers())
         assert num_files == 1, f"Expected single csv file in tarball but got {num_files} files."
@@ -120,12 +175,19 @@ def extract(data: io.BytesIO) -> io.BytesIO:
                 data = f.read()
     return io.BytesIO(data)
 
+def extract_gzip(data: io.BytesIO) -> io.BytesIO:
+    """Extract a .gz file to memory"""
+    log.info(f"Extracting .gz file...")
+    with gzip.open(data, mode='r') as lines:
+        data = lines.read()
+    return io.BytesIO(data)
 
-def get_timestamps(X: pd.DataFrame,
-                   year_col: str="Year",
-                   month_col: str="Month",
-                   day_col: str="Day",
-                   time_col: str="Time") -> pd.Series:
+
+def get_timestamps_from_str(X: pd.DataFrame,
+                            year_col: str="Year",
+                            month_col: str="Month",
+                            day_col: str="Day",
+                            time_col: str="Time") -> pd.Series:
     """Return a pd.Series of datetime objects created from a dataframe with columns 'Year', 'Month', 'Day', 'Time'"""
     X_hm = X[time_col].str.split(
         ":", expand=True
@@ -138,9 +200,8 @@ def get_timestamps(X: pd.DataFrame,
     return d
 
 
-def add_hours_total_minutes(X: pd.DataFrame) -> pd.DataFrame:
+def add_hours_total_minutes(X: pd.DataFrame, timestamps: pd.Series) -> pd.DataFrame:
     """Return a dataframe with new columns 'Hour' and 'total_minutes'"""
-    timestamps = get_timestamps(X)
     X["Hour"] = timestamps.dt.hour
     # Add a column for total minutes from timestamp=0 to our dataframe
     zero_time = pd.to_datetime(np.zeros(len(X)))
@@ -163,6 +224,7 @@ def add_minutes_from_last(X: pd.DataFrame, minutes_col: str, by_columns: List[st
     X["total_minutes_from_last"] = col
     return X
 
+
 def convert_to_str(X: pd.Series) -> pd.Series:
     X = X.convert_dtypes(convert_integer=True)
     null_spots = X.isna()
@@ -170,7 +232,10 @@ def convert_to_str(X: pd.Series) -> pd.Series:
     X[null_spots] = "NAN"
     return X
 
+
 def convert_to_bool(X: pd.Series) -> pd.Series:
+    if X.dtype == bool:
+        return X
     rep = {'yes': True,
            'no': False,
            'true': True,
@@ -178,6 +243,7 @@ def convert_to_bool(X: pd.Series) -> pd.Series:
     X = X.str.lower()
     X = X.replace(rep)
     return X.astype('str')
+
 
 def convert_dollars_to_floats(X: pd.Series, log_scale: bool = True) -> pd.Series:
     X = X.str.replace("$", "").astype(float)

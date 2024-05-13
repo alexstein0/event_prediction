@@ -1,0 +1,3 @@
+python pretrain_HF.py name=mask_inputs model.batch_size=32 model.epochs=1 impl.run_eval_every_nth_step=10000 impl.print_loss_every_nth_step=1000 model.lr=.0001 model.seq_length=5 model.mask_inputs=True
+#[2024-04-29 01:14:41,141] Training for epoch: 0 | avg/step: 0:00:00.21 loss:  0.0029 acc: 99.95%  auc:  0.9723 Mem (VRAM/RAM): 7.1204GB/90.8822GB
+#[2024-04-29 01:14:41,143] Eval for epoch: 0    | Total dur: 9:06:12.51 Epoch dur: 9:06:12.51 loss:  0.0018 acc: 99.96%  auc:  0.9859 Mem (VRAM/RAM): 7.1204GB/90.8838GB

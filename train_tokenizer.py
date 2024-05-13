@@ -16,11 +16,14 @@ log = logging.getLogger(__name__)
 
 
 def main_process_data(cfg, setup=None) -> Dict:
-    dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, cfg.save_tar, cfg.save_csv)
+    log.info(f"Retrieving dataset from: {cfg.data}")
+    dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir)
     data_processor = get_data_processor(cfg.data)
     log.info(f"DATASET LOADED")
-    dataset = data_preparation.preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
+    dataset, col_to_id_dict = data_preparation.preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
     log.info(f"DATASET processed")
+    dataset = data_preparation.convert_to_huggingface(dataset, data_processor)
+    log.info(f"DATASET converted to huggingface")
 
     unk_token = "[UNK]"
     tokenizer = Tokenizer(models.WordLevel(unk_token=unk_token))
@@ -63,7 +66,6 @@ def main_process_data(cfg, setup=None) -> Dict:
     )
 
     log.info("TRAINING COMPLETE")
-    log.info(f"num cols: {len(data_processor.get_data_cols())} | {data_processor.get_data_cols()}")
     log.info(f"Vocab_size: {tokenizer.get_vocab_size()}")
     tok_name = f"{cfg.data.name}_{cfg.tokenizer.name}"
     files1 = wrapped_tokenizer.save_pretrained(tok_name)
@@ -74,6 +76,7 @@ def main_process_data(cfg, setup=None) -> Dict:
         log.info(f"Also saved tokenizer to {tokenizer_path}")
 
     return {}
+
 
 @hydra.main(config_path="event_prediction/config", config_name="pre_process_data", version_base="1.3")
 def launch(cfg):

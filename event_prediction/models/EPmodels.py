@@ -8,9 +8,7 @@ from einops import rearrange
 
 import logging
 
-from event_prediction import tokenizer_utils
 from torchmetrics.classification import BinaryAUROC
-
 
 metric = BinaryAUROC(thresholds=None, compute_on_cpu=True)
 
@@ -26,59 +24,39 @@ class Decoder(nn.Module):
         config = AutoConfig.from_pretrained(
             "gpt2",
             vocab_size=len(tokenizer.vocab),
-            n_ctx=cfg.context_length,
+            n_ctx=cfg.seq_length,
             bos_token_id=tokenizer.bos_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
 
         if cfg.loss_fn == "CrossEntropyLoss":
-            self.loss_fn = CrossEntropyLoss()
+            self.loss_fn = CrossEntropyLoss(ignore_index=-100)
         else:
             log.warning(f"Expected 'CrossEntropyLoss' but got {cfg.loss_fn}, cannot train")
             raise NotImplementedError()
 
         self.model = GPT2LMHeadModel(config)
-        classification_info = tokenizer_utils.get_classification_options(tokenizer, label_in_last_col=True) #, label_col_prefix=label_col_id)
-        self.num_cols = classification_info["num_cols"]
-        self.label_ids = classification_info["label_ids"]
-        self.tokenizer = tokenizer
+        # self.model = GPT2ForSequenceClassification(config)
 
-    def forward(self, input_ids: torch.Tensor, targets: torch.Tensor, *args, **kwargs):
-        mask = (input_ids != 0).int()  # todo mask
-        if "mask" in kwargs:
-            mask = kwargs["mask"]
-        outputs = self.model(input_ids)
+    def forward(self, input_ids: torch.Tensor, *args, **kwargs):
+        model_input_ids = input_ids[:, :-1].contiguous()
+        shifted_labels = input_ids[:, 1:].contiguous()
 
-        logits = outputs["logits"]
-        #todo try masking every non label col
+        if kwargs.get("mask", None) is not None:
+            # todo
+            masks = kwargs["mask"]
+            shifted_labels = torch.mul(shifted_labels, masks[..., 1:])
 
-        inputs_flattened = rearrange(input_ids, 'b n -> (b n)')  # (b, n) -> (b*n)
-        logits_flattened = rearrange(logits, 'b n v -> (b n) v')  # (b, n, v) -> (b*n, v)
-        targets_flattened = rearrange(targets, 'b n -> (b n)')  # (b, n) -> (b*n)
-        mask_flattened = rearrange(mask, 'b n -> (b n)')
+        shifted_labels[shifted_labels == 0] = -100
+        # outputs = self.model(input_ids=input_ids, labels=input_ids)  # can do this where the model calculates the loss
+        outputs = self.model(input_ids=input_ids)
+        shifted_outputs = outputs["logits"][:, :-1, :].contiguous()
 
-        selected_logits = logits_flattened[mask_flattened == 1, :]
-        selected_targets = targets_flattened[mask_flattened == 1]
-
-        loss = self.loss_fn(logits_flattened, targets_flattened)
-
-        # Convert logits over all vocabulary to fraud/not-fraud probability for use in accuracy
-        not_fraud_id = self.label_ids["False"]
-        is_fraud_id = self.label_ids["True"]
-        notfraud_logits = selected_logits[:, not_fraud_id]  # (b*n/tokens_per_trans, v) -> (b*n/tokens_per_trans)
-        isfraud_logits = selected_logits[:, is_fraud_id]
-        fraud_logits = torch.stack((notfraud_logits, isfraud_logits))  # (2, b*n/tokens_per_trans)
-        fraud_probs = F.softmax(fraud_logits, dim=0)
-
-        # Calculate AUC
-        is_fraud_probs = fraud_probs[1]  # (b*n/tokens_per_trans)
-        binary_targets = selected_targets == is_fraud_id  # (b*n/tokens_per_trans)
-        auc = metric(is_fraud_probs, binary_targets)
-        # Calculate Accuracy
-        preds = torch.argmax(fraud_probs, dim=0)  # (b*n/tokens_per_trans)
-        accuracy = (preds == binary_targets).float().mean()
-
-        return {"loss": loss, "logits": outputs["logits"][:, -1, :], "log_perplexity": loss.clone().detach(), "accuracy": accuracy, "auc": auc}
+        # todo try calc loss only on label col
+        loss = self.loss_fn(shifted_outputs.view(-1, shifted_outputs.shape[-1]), shifted_labels.view(-1))
+        # loss = outputs["loss"]
+        outputs = {k: v for k, v in outputs.items()}
+        return outputs, loss
 
 
 class RowEncoder(nn.Module):

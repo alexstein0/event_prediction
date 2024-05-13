@@ -26,8 +26,11 @@ import tempfile
 
 import logging
 import hydra
+from hydra.utils import get_original_cwd
 from omegaconf import OmegaConf, open_dict
 import transformers
+
+import wandb
 
 log = logging.getLogger(__name__)
 os.environ["HYDRA_FULL_ERROR"] = "0"
@@ -43,9 +46,9 @@ def main_launcher(cfg, main_fn, job_name=""):
     # TODO
     # Decide GPU and possibly connect to distributed setup
     setup, kWh_counter = system_startup(cfg)
-    # # Initialize wanDB
-    # if cfg.wandb.enabled:
-    #     _initialize_wandb(setup, cfg)
+    # Initialize wanDB
+    if cfg.wandb.enabled:
+        _initialize_wandb(setup, cfg)
     log.info("--------------------------------------------------------------")
     log.info(f"--------------Launching {job_name} run! ---------------------")
     log.info(OmegaConf.to_yaml(cfg, resolve=True))
@@ -58,11 +61,11 @@ def main_launcher(cfg, main_fn, job_name=""):
         metrics = flatten(metrics)
         dump_metrics(cfg, metrics)
         # Export to wandb:
-        if cfg.wandb.enabled:
-            import wandb
-
-            for k, v in metrics.items():
-                wandb.run.summary[k] = v
+        # if cfg.wandb.enabled:
+        #     wandb_log(metrics)
+        # if cfg.wandb.enabled:
+        #     for k, v in metrics.items():
+        #         wandb.run.summary[k] = v
 
         # if torch.cuda.is_available():
         #     max_alloc = f"{torch.cuda.max_memory_allocated(setup['device'])/float(1024**3):,.3f} GB"
@@ -370,47 +373,33 @@ def set_deterministic():
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 
-def avg_n_dicts(dicts):
-    """https://github.com/wronnyhuang/metapoison/blob/master/utils.py."""
-    # given a list of dicts with the same exact schema, return a single dict with same schema whose values are the
-    # key-wise average over all input dicts
-    means = {}
-    for dic in dicts:
-        for key in dic:
-            if key not in means:
-                if isinstance(dic[key], list):
-                    means[key] = [0 for entry in dic[key]]
-                else:
-                    means[key] = 0
-            if isinstance(dic[key], list):
-                for idx, entry in enumerate(dic[key]):
-                    means[key][idx] += entry / len(dicts)
-            else:
-                means[key] += dic[key] / len(dicts)
-    return means
-
-
 def dump_metrics(cfg, metrics):
     """Simple yaml dump of metric values."""
 
     filepath = f"metrics_{cfg.name}.yaml"
     sanitized_metrics = dict()
     for metric, val in metrics.items():
+        metric = " ".join(metric.split("_"))
         try:
             sanitized_metrics[metric] = np.asarray(val).item()
         except ValueError:
             sanitized_metrics[metric] = np.asarray(val).tolist()
+        if isinstance(val, int):
+            log.info(f"{metric:20s} {val:6d}")
+        elif isinstance(val, float):
+            log.info(f"{metric:20s} {val:6.4f}")
+        else:
+            log.info(f"{metric:20s} {val}")
+
     with open(filepath, "w") as yaml_file:
         yaml.dump(sanitized_metrics, yaml_file, default_flow_style=False)
 
 
 def _initialize_wandb(setup, cfg):
     if is_main_process():
-        import wandb
-
         config_dict = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
         settings = wandb.Settings(start_method="thread")
-        settings.update({"git_root": cfg.original_cwd})
+        settings.update({"git_root": get_original_cwd()})
         run = wandb.init(
             entity=cfg.wandb.entity,
             project=cfg.wandb.project,
@@ -424,24 +413,9 @@ def _initialize_wandb(setup, cfg):
         run.summary["numGPUs"] = torch.cuda.device_count()
 
 
-def wandb_log(stats, cfg):
-    if cfg.wandb.enabled:
-        if is_main_process():
-            import wandb
-
-            wandb.log({k: v[-1] for k, v in stats.items()}, step=stats["step"][-1] if "step" in stats else None)
-
-
-def get_cpus() -> int:
-    # Number of threads
-    try:
-        return min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
-    except:
-        pass
-    try:
-        return os.cpu_count()  # when running on mac
-    except:
-        return 1
+def wandb_log(stats):
+    if is_main_process():
+        wandb.log({k: v for k, v in stats.items()}, step=stats["step"] if "step" in stats else None)
 
 
 def flatten(d, parent_key="", sep="_"):
@@ -456,12 +430,24 @@ def flatten(d, parent_key="", sep="_"):
     return dict(items)
 
 
+def collect_memory_usage(metrics, device=None):
+    try:
+        mem_info = torch.cuda.mem_get_info()
+        metrics["Usage"] = mem_info[0] / float(1 << 30)
+        metrics["Total"] = mem_info[1] / float(1 << 30)
+    except:
+        pass
+
+    metrics["VRAM"] = torch.cuda.max_memory_allocated(device) / float(1 << 30)
+    metrics["RAM"] = psutil.Process(os.getpid()).memory_info().rss / float(1 << 30)  # / 1024**3
+    return metrics
+
+
 def collect_system_metrics(cfg, metrics, kWh_counter, setup):
     # Finalize some compute metrics:
     metrics["GPU"] = torch.cuda.get_device_name(device=setup["device"]) if torch.cuda.device_count() > 0 else ""
     metrics["numGPUs"] = torch.cuda.device_count()
-    metrics["VRAM"] = torch.cuda.max_memory_allocated(setup["device"]) / float(1 << 30)
-    metrics["RAM"] = psutil.Process(os.getpid()).memory_info().rss / 1024**3
+    metrics = collect_memory_usage(metrics, setup["device"])
     if torch.cuda.device_count() == 1:
         metrics["kWh"] = get_kWh(kWh_counter, setup)
     else:
@@ -498,3 +484,37 @@ def pathfinder(cfg):
         if not os.path.isabs(cfg.impl.path):
             cfg.impl.path = os.path.join(cfg.base_dir, cfg.impl.path)
     return cfg
+
+
+####### random helper functions
+def get_cpus() -> int:
+    # Number of threads
+    # if 1:
+    #     return 1
+    try:
+        return min(psutil.cpu_count(logical=False), len(psutil.Process().cpu_affinity()))  # covering both affinity and phys.
+    except:
+        pass
+    try:
+        return os.cpu_count()  # when running on mac
+    except:
+        return 1
+
+
+def get_time_deltas(*times, set_format=True):
+    now = time.time()
+    output = []
+    for i in range(len(times)):
+        dt = now - times[i]
+        if set_format:
+            dt = format_time(dt)
+        output.append(dt)
+    return output
+
+def format_time(seconds: int, decimals=-1) -> str:
+    dt = str(datetime.timedelta(seconds=seconds))[:11]
+    if decimals >= 0:
+        splitted = dt.split(".")
+        after = splitted[1][:decimals]
+        dt = ".".join([splitted[0], after])
+    return dt
