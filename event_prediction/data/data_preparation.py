@@ -135,8 +135,7 @@ def prepare_dataloaders(tokenized_dataset: DatasetDict | Dataset, tokenizer, cfg
     return {"train": train_loader, "test": val_loader}
 
 
-def prepare_pretraining_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -> data.DataLoader:
-
+def get_dataset_and_collator(tokenized_dataset: Dataset, tokenizer, cfg: DictConfig) -> Tuple:
     if cfg.model.training_objective == "causal":
         tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset, cfg.model.seq_length, tokenizer.pad_token_id, cfg.model.randomize_order, cfg.model.fixed_cols)
         collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
@@ -146,23 +145,17 @@ def prepare_pretraining_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -
         collate_fn = FastDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=True)
     else:
         raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
+    return tokenized_dataset, collate_fn
 
+
+def prepare_pretraining_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -> data.DataLoader:
+    tokenized_dataset, collate_fn = get_dataset_and_collator(tokenized_dataset, tokenizer, cfg)
     loader = to_train_dataloader(tokenized_dataset, collate_fn, cfg.model.batch_size)
     return loader
 
 
 def prepare_validation_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -> data.DataLoader:
-
-    if cfg.model.training_objective == "causal":
-        tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset, cfg.model.seq_length, tokenizer.pad_token_id)
-        collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
-
-    elif cfg.model.training_objective == "masked":
-        tokenized_dataset = MaskedLanguageModelingDataset(tokenized_dataset, n_cols)
-        collate_fn = FastDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=True)
-    else:
-        raise ValueError(f"training_objective must be 'causal' or 'masked', not {cfg.training_objective}")
-
+    tokenized_dataset, collate_fn = get_dataset_and_collator(tokenized_dataset, tokenizer, cfg)
     loader = to_val_dataloader(tokenized_dataset, collate_fn, cfg.model.batch_size)
     return loader
 
@@ -385,9 +378,7 @@ class NextTokenPredictionDataset(data.Dataset):
             for s in range(self.seq_length):
                 start = self.num_columns * s
                 index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
-            print(x)
             x = x[index]
-            print(x)
             mask = mask[index]
         return {"input_ids": x, "mask": mask}
 
