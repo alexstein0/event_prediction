@@ -16,7 +16,7 @@ temporary_corpus: False # Save data directly into local staging dir, forget afte
 max_raw_chunk_size: 1e14
 
 # checkpointing and logging:
-run_eval_every_nth_step: 1000
+run_eval_every_nth_step: 10_000
 print_loss_every_nth_step: ${impl.run_eval_every_nth_step}
 save_intermediate_checkpoints: False
 save_every_nth_step: 10_000

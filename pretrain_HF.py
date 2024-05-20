@@ -62,22 +62,11 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Batch Size: {train_loader.batch_size}")
     log.info(f"Total tokens in dataloaders (n_batches * batch_sz * seq_length * columns): "
              f"{(len(train_loader) + len(val_loader)) * val_loader.batch_size * cfg.model.seq_length * sample_size:,}")
+    log.info(f"Memory info: {utils.collect_memory_usage({}, setup.get('device', None))}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")
     log.info(f"------------- DATASET PROCESSED -------------")
 
-    # log.info("NEED MORE DATASET PROCESSING, split into batches/mini batches etc")
-
-    # todo
-    # if mlm add mask token and pad token
-    # tokenizer.add_special_tokens(
-    #     {'pad_token': '[PAD]',
-    #      'unk_token': '[UNK]',
-    #      'new_row': '[ROW]'}
-    # )
-
-    # label_col_id = "15"
-    # train model
     # GET MODEL
     log.info(f"------------- INITIALIZING MODEL -------------")
     section_timer = time.time()
@@ -99,7 +88,10 @@ def main_pretrain(cfg, setup=None) -> Dict:
     model = model_interface.model
     model_size = sum(t.numel() for t in model.parameters())
     vocab_size = len(tokenizer.vocab)
-    log.info(f"Model Name: {model.model.name_or_path}")
+    try:
+        log.info(f"Model Name: {model.model.name_or_path}")
+    except:
+        log.info(f"Model Name: {model.name_or_path}")
     log.info(f"Model size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)

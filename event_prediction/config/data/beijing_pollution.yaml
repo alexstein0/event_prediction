@@ -44,7 +44,7 @@ static_numeric_columns:
 # - name: "std_dollar_amt"
 #   parent: "Amount"
 
-binary_columns:
+binary_columns: []
 #  - "is_online"
 #  - "Is Fraud?"
 

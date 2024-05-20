@@ -11,12 +11,14 @@ class BeijingPollutionDataProcessor(GenericDataProcessor):
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Return a normalized dataframe"""
 
-        data["User"] = data["reviewerID"]
+        # data["User"] = data["reviewerID"]
 
         # convert to right datatype
         data = self.convert_columns_to_types(data)
 
         # add missing columns
+        # data = add_hours_total_minutes(data, get_timestamps_from_str(data, time_col="Time"))
+
         data = add_hours_total_minutes(data, timestamps=pd.to_datetime(data["unixReviewTime"], unit='s'))
 
         # sort

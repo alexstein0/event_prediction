@@ -27,6 +27,7 @@ preprocess_only: False
 
 model_dir: models
 model_save_name:
+checkpoint_save_name: latest
 
 
 

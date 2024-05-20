@@ -1,6 +1,6 @@
 from .ibm_fraud_transaction_data_processor import IbmFraudTransactionDataProcessor
 from .amazon_data_processor import AmazonDataProcessor
-from .beijing_pollution import BeijingPollutionDataProcessor
+from .beijing_pollution_data_processor import BeijingPollutionDataProcessor
 from .generic_data_processor import GenericDataProcessor
 
 __all__ = [
@@ -16,5 +16,7 @@ def get_data_processor(data_cfg) -> GenericDataProcessor:
         return IbmFraudTransactionDataProcessor(data_cfg)
     elif data_cfg.data_processor == "amazon":
         return AmazonDataProcessor(data_cfg)
+    elif data_cfg.data_processor == "beijing_pollution":
+        return BeijingPollutionDataProcessor(data_cfg)
     else:
         return GenericDataProcessor(data_cfg)

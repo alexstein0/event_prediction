@@ -52,7 +52,7 @@ def main_launcher(cfg, main_fn, job_name=""):
     log.info("--------------------------------------------------------------")
     log.info(f"--------------Launching {job_name} run! ---------------------")
     log.info(OmegaConf.to_yaml(cfg, resolve=True))
-    metrics = main_fn(cfg) #, setup)
+    metrics = main_fn(cfg, setup)
     metrics = collect_system_metrics(cfg, metrics, kWh_counter, setup)
 
     log.info("-------------------------------------------------------------")

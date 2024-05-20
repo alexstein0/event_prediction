@@ -23,14 +23,19 @@ threads = utils.get_cpus()
 
 # THIS CODE IS COPIED FROM FATA-TRANS  This is the base class for masked collator when no temporal component and no static/dynamic split
 class TransDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
+    # def __init__(self, loss_calc: str="all", **kwargs):
+    #     super().__init__(**kwargs)
+    #     self.loss_calc_mode = loss_calc  # "all" means all tokens, "labels" means only on labels, "last" means only on last label
+
     def __call__(self, examples: List[Union[List[int], torch.Tensor, Dict[str, torch.Tensor]]]) -> Dict[str, torch.Tensor]:
         input_ids = [x["input_ids"] for x in examples]
-        # labels = [x["targets"] for x in examples]
+        # targets = [x["targets"] for x in examples]
         mask = [x["mask"] for x in examples]
         input_ids = _torch_collate_batch(input_ids, self.tokenizer)
-        # labels = _torch_collate_batch(labels, self.tokenizer)
+        # targets = _torch_collate_batch(targets, self.tokenizer)
         mask = _torch_collate_batch(mask, self.tokenizer)
         sz = input_ids.shape
+
         if self.mlm:
             batch = input_ids.view(sz[0], -1)
             inputs, labels = self.mask_tokens(batch)
@@ -38,11 +43,11 @@ class TransDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
             # print("MLM batch shape: ", inputs.view(sz).shape)
             return {"input_ids": inputs.view(sz), "masked_lm_labels": labels.view(sz)}
         else:
-            # labels = labels.clone().detach()
-            # if self.tokenizer.pad_token_id is not None:
-            #     labels[labels == self.tokenizer.pad_token_id] = -100
-            # return {"input_ids": input_ids, "targets": labels, "mask": mask}
-            return {"input_ids": input_ids, "mask": mask}
+            labels = input_ids.clone().detach()[:, 1:]
+            if self.tokenizer.pad_token_id is not None:
+                labels[labels == self.tokenizer.pad_token_id] = -100
+            # return {"input_ids": input_ids, "targets": targets, "labels": labels, "mask": mask}
+            return {"input_ids": input_ids, "mask": mask, "labels": labels}
 
     def mask_tokens(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -121,7 +126,7 @@ def prepare_dataloaders(tokenized_dataset: DatasetDict | Dataset, tokenizer, cfg
     """
     Takes in pretokenized hf dataset
     """
-
+    log.info(f"Preparing dataloaders")
     # train_loader = data.DataLoader(train_data, batch_size=cfg.batch_size, shuffle=True)
     # val_loader = data.DataLoader(val_data, batch_size=cfg.batch_size)
     if isinstance(tokenized_dataset, Dataset):
@@ -137,7 +142,13 @@ def prepare_dataloaders(tokenized_dataset: DatasetDict | Dataset, tokenizer, cfg
 
 def get_dataset_and_collator(tokenized_dataset: Dataset, tokenizer, cfg: DictConfig) -> Tuple:
     if cfg.model.training_objective == "causal":
-        tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset, cfg.model.seq_length, tokenizer.pad_token_id, cfg.model.randomize_order, cfg.model.fixed_cols)
+        tokenized_dataset = NextTokenPredictionDataset(tokenized_dataset=tokenized_dataset,
+                                                       seq_length=cfg.model.seq_length,
+                                                       pad_id=tokenizer.pad_token_id,
+                                                       bos_id=tokenizer.bos_token_id,
+                                                       eos_id=tokenizer.eos_token_id,
+                                                       randomize_order=cfg.model.randomize_order,
+                                                       fixed_cols=cfg.model.fixed_cols)
         collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
 
     elif cfg.model.training_objective == "masked":
@@ -338,24 +349,116 @@ def to_val_dataloader(dataset: data.Dataset, collate_fn, batch_size: int) -> dat
     return train_loader
 
 
-class NextTokenPredictionDataset(data.Dataset):
-    """
-    Returns a PyTorch Dataset object with labels extracted correctly for Causal Language
-    Modeling (GPT-style next token prediction using a causal mask). Data must be a tensor of token ids.
-    """
-
-    def __init__(self, tokenized_dataset: Dataset, seq_length: int, pad_id: int, randomize_order: bool = False, fixed_cols: int = 2):
+class TabularDataset(data.Dataset):
+    def __init__(self,
+                 tokenized_dataset: Dataset,
+                 seq_length: int,
+                 pad_id: int,
+                 randomize_order: bool = False,
+                 fixed_cols: int = 1,
+                 bos_id: int = 0,
+                 eos_id: int = 0
+                 ):
+        assert pad_id is not None
         self.pad_id = pad_id
+        self.bos_id = bos_id if bos_id is not None else pad_id
+        self.eos_id = eos_id if eos_id is not None else pad_id
         self.seq_length = seq_length  # number of ROWS in a sequence
         self.num_rows = sum([x for x in tokenized_dataset.num_rows.values()])
         self.user_ids = list(tokenized_dataset.keys())  # needs to be split by user already
         self.num_columns = len(tokenized_dataset[self.user_ids[0]]["input_ids"][0])
-        self.data, self.label_mask = self.prepare_data(self.user_ids, tokenized_dataset)
         self.randomize_order = randomize_order
-        self.fixed_cols = fixed_cols
+        self.fixed_cols = fixed_cols + 1  # always fix the new row token
+        self.label_col_position = self.num_columns - 2  # where the label is within a row (new row token is last)
+        self.data, self.label_mask = self.prepare_data(self.user_ids, tokenized_dataset)
+        # todo we dont need to keep the labels, but we can just keep track of the randomized mapping and can get label during eval time
+        self.epoch = 0
 
     def __len__(self) -> int:
         return self.num_rows // self.seq_length  # consider end row
+
+    def prepare_data(self, user_ids: List[str], tokenized_dataset: Dataset):
+        pad_row = [self.pad_id for _ in range(self.num_columns)]  # this is a dummy pad row to add when number of rows is not multiple of sequence length
+        all_sequences = []
+        all_labels_masks = []
+        total_transactions = 0
+        for uid in user_ids:
+            # user_rows = tokenized_dataset.filter(lambda example: example["User"] == uid, num_proc=threads)  # todo this is very slow, better to have the data already giving right rows?
+            # user_rows = torch.tensor(user_rows["input_ids"], dtype=torch.long)
+            user_rows = torch.tensor(tokenized_dataset[uid]["input_ids"], dtype=torch.long)
+            num_rows = user_rows.shape[0]
+            total_transactions += (num_rows // self.seq_length) + int((num_rows % self.seq_length) > 0)  # sanity check
+            index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
+
+            user_rows = user_rows.gather(1, index)
+            last_col_mask = torch.zeros_like(user_rows)
+            last_col_mask[index == self.label_col_position] = 1  # second to last column is where we will do the mask
+
+            if num_rows % self.seq_length != 0:
+                num_pad_rows = self.seq_length - (num_rows % self.seq_length)
+                pad_rows = torch.tensor(pad_row).repeat([num_pad_rows, 1])
+                user_rows = torch.cat([user_rows, pad_rows])
+                last_col_mask = torch.cat([last_col_mask, torch.zeros_like(pad_rows)])
+            assert len(user_rows) % self.seq_length == 0
+            # if num_rows_for_user < self.seq_length:  # not enough transactions for the user to fill up the seq_len window
+            #     continue
+            for starting_row_id in range(0, len(user_rows) - self.seq_length + 1, self.seq_length):  # consider not striding by seq_len
+                # add bos, eos tokens?
+                seq = user_rows[starting_row_id: starting_row_id + self.seq_length].reshape(1, -1)
+                mask_of_labels_in_sequence = last_col_mask[starting_row_id: starting_row_id + self.seq_length].reshape(1, -1)
+
+                all_sequences.append(seq)
+                all_labels_masks.append(mask_of_labels_in_sequence)
+
+        # note that with this implementation can have multiple users in same batch but NOT in same sequence (obviously)
+        return torch.cat(all_sequences), torch.cat(all_labels_masks)
+
+    def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
+        raise NotImplementedError
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+
+class NextTokenPredictionDataset(TabularDataset):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
+        # The corresponding label for each example is a chunk of tokens of the same size,
+        # but shifted one token to the right.
+
+        # or in the loss function. Huggingface's DataCollator is designed to let the loss
+        # function do the shifting, so we need to change this if we want to be compatible with that.
+        x = self.data[i, :]
+        mask = self.label_mask[i, :]  # defines where the labels for each row are
+        # randomize order of inputs within a row
+        if self.randomize_order:
+            index = torch.arange(x.shape[0])
+            for s in range(self.seq_length):
+                start = self.num_columns * s
+                index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
+            x = x[index]
+            mask = mask[index]
+
+        x_out = torch.zeros(x.size(0)+2).long()
+        mask_out = torch.zeros(x.size(0)+2).long()
+        x_out[0] = self.bos_id
+        x_out[-1] = self.eos_id
+        x_out[1:-1] = x
+        mask_out[1:-1] = mask
+
+        return {"input_ids": x_out, "mask": mask_out}
+
+
+class SequenceClassifierDataset(TabularDataset):
+    def __init__(self,
+                 label_type: str = 'last',  # or 'any'
+                 target_label_id: int = -1,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.label_type = label_type
+        self.target_label_id = target_label_id
 
     def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
         # The corresponding label for each example is a chunk of tokens of the same size,
@@ -371,7 +474,6 @@ class NextTokenPredictionDataset(data.Dataset):
         # mask = self.label_mask[start: start + self.seq_length]
         # return {"input_ids": x, "targets": y, "mask": mask}
         x = self.data[i, :]
-        # y = self.data[i, 1:]
         mask = self.label_mask[i, :]
         if self.randomize_order:
             index = torch.arange(x.shape[0])
@@ -380,51 +482,16 @@ class NextTokenPredictionDataset(data.Dataset):
                 index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
             x = x[index]
             mask = mask[index]
-        return {"input_ids": x, "mask": mask}
 
-    def prepare_data(self, user_ids: List[str], tokenized_dataset: Dataset):
-        pad_row = [self.pad_id for _ in range(self.num_columns)]  # this is a dummy pad row to add when number of rows is not multiple of sequence length
-        all_sequences = []
-        all_labels = []
-        total_transactions = 0
-        for uid in user_ids:
-            # user_rows = tokenized_dataset.filter(lambda example: example["User"] == uid, num_proc=threads)  # todo this is very slow, better to have the data already giving right rows?
-            # user_rows = torch.tensor(user_rows["input_ids"], dtype=torch.long)
-            user_rows = torch.tensor(tokenized_dataset[uid]["input_ids"], dtype=torch.long)
-            num_rows = user_rows.shape[0]
-            total_transactions += (num_rows // self.seq_length) + int((num_rows % self.seq_length) > 0)  # sanity check
-
-            # self.randomize_order = True
-            # if self.randomize_order:
-            #     index = torch.zeros_like(user_rows)
-            #     index[:, -1] = self.num_columns-1
-            #     for x in range(num_rows):
-            #         index[x, :self.num_columns-1] = torch.randperm(self.num_columns-1)
-            # else:
-            #     index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
-            index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
-
-            user_rows = user_rows.gather(1, index)
-            last_col_mask = torch.zeros_like(user_rows)
-            last_col_mask[index == self.num_columns-2] = 1  # second to last column is where we will do the mask
-
-            if num_rows % self.seq_length != 0:
-                num_pad_rows = self.seq_length - (num_rows % self.seq_length)
-                pad_rows = torch.tensor(pad_row).repeat([num_pad_rows, 1])
-                user_rows = torch.cat([user_rows, pad_rows])
-                last_col_mask = torch.cat([last_col_mask, torch.zeros_like(pad_rows)])
-            assert len(user_rows) % self.seq_length == 0
-            # if num_rows_for_user < self.seq_length:  # not enough transactions for the user to fill up the seq_len window
-            #     continue
-            for starting_row_id in range(0, len(user_rows) - self.seq_length + 1, self.seq_length):  # consider not striding by seq_len
-                # add bos, eos tokens?
-                seq = user_rows[starting_row_id: starting_row_id + self.seq_length].reshape(1, -1)
-                all_sequences.append(seq)
-                labels_for_sequence = last_col_mask[starting_row_id: starting_row_id + self.seq_length].reshape(1, -1)
-                all_labels.append(labels_for_sequence)
-
-        # note that with this implementation can have multiple users in same batch but NOT in same sequence (obviously)
-        return torch.cat(all_sequences), torch.cat(all_labels)
+        inds = (mask == 1).nonzero().flatten()
+        if self.label_type == "any" and self.target_label_id >= 0:
+            # todo this doesnt work
+            y = x[inds] == self.target_label_id
+        elif self.label_type == "last":
+            y = inds[-1]
+        else:  # self.loss_calc_mode == "labels:
+            raise
+        return {"input_ids": x, "labels": y}
 
 
 class MaskedLanguageModelingDataset(data.Dataset):

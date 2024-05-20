@@ -15,7 +15,7 @@ from sklearn.metrics import roc_auc_score
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torchmetrics.functional.classification import binary_auroc, multiclass_auroc
+from torchmetrics.functional.classification import binary_auroc, multiclass_auroc, f1_score
 
 from event_prediction import tokenizer_utils, utils, get_data_processor, data_preparation
 
@@ -70,8 +70,16 @@ class ModelTrainerInterface:
 
         self.epochs = cfg.model.epochs
         self.model_context_length = self.num_cols*cfg.model.seq_length
-        self.mask_inputs = cfg.model.mask_inputs
         self.randomize_order = cfg.model.randomize_order
+        self.metric_calc_mode = cfg.model.metric_calc_mode
+
+        if cfg.model.track_preds:
+            # setting to none will track everything possible
+            self.tracked_model_output_training = None
+            self.tracked_model_output_eval = None
+        else:
+            self.tracked_model_output_training = ["loss", "loss_sequence", "accuracy"]
+            self.tracked_model_output_eval = ["loss", "loss_sequence", "accuracy", "target_inds", "target_probs"]
 
         # todo is there a cleaner way of doing these?
         cfg.model.context_length = self.model_context_length
@@ -80,12 +88,13 @@ class ModelTrainerInterface:
             self.model_save_name = cfg.model_save_name
         else:
             self.model_save_name = f"{cfg.name}_{timestamp}"
+        self.checkpoint_save_name = cfg.checkpoint_save_name
         log.info(f"Save name: {self.model_save_name}")
 
         self.setup = {
             "device": device,
             "wandb_enabled": cfg.wandb.enabled,
-            }
+        }
         if setup is not None:
             self.setup = setup
 
@@ -151,29 +160,6 @@ class ModelTrainerInterface:
         self.epoch = 0
         self.cfg = cfg
 
-    # def train_HF(self, data_loaders: Dict[str, DataLoader]) -> Tuple[float, float]:
-    #     training_args = TrainingArguments(
-    #         num_train_epochs=self.cfg.epochs,  # total number of training epochs
-    #         save_steps=self.cfg.save_every_nth_step,
-    #         per_device_train_batch_size=self.cfg.model.batch_size,
-    #         per_device_eval_batch_size=self.cfg.model.batch_size,
-    #         evaluation_strategy="steps",
-    #         prediction_loss_only=False,
-    #         overwrite_output_dir=True,
-    #         metric_for_best_model='eval_auc_score',
-    #         eval_steps=a.eval_steps,
-    #         label_names=label_names,
-    #     )
-    #     trainer = Trainer(
-    #         model=self.model,
-    #         args=training_args,
-    #         data_collator=data_collator,
-    #         train_dataset=train_dataset,
-    #         eval_dataset=eval_dataset,
-    #         compute_metrics=compute_cls_metrics,
-    #         callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
-    #     )
-
     def train(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info(f"Running training for {self.epochs} epochs")
         stats = dict()
@@ -186,13 +172,15 @@ class ModelTrainerInterface:
 
         for epoch in range(self.epochs):
             self.epoch = epoch
+            self.train_loader.dataset.set_epoch = epoch
+            self.valid_loader.dataset.set_epoch = epoch
             epoch_start_time = time.time()
             epoch_start_step = self.steps
             for data_idx, batch in enumerate(self.train_loader):
                 self.optim.zero_grad()
 
                 model_output = self.train_loop(data_idx, batch)
-                stats = self.add_model_output_stats(model_output, stats)
+                stats = self.add_model_output_stats(model_output, stats, self.tracked_model_output_training)
                 if (self.steps + 1) % self.cfg.impl.print_loss_every_nth_step == 0:
                     training_stats = self.gather_stats(stats)
                     elapsed_times = utils.get_time_deltas(start_time, last_print_time, set_format=False)
@@ -216,8 +204,13 @@ class ModelTrainerInterface:
                     validation_stats["eval_time"] = eval_time
                     self.log(f"Eval step: {self.steps + 1}", validation_stats, is_training=False)
 
-                if (self.steps + 1) % self.cfg.impl.save_every_nth_step == 0 and self.steps != 0 and self.cfg.impl.save_intermediate_checkpoints:
-                    name = f"checkpoint_{self.steps + 1}_{epoch}"
+                if (self.cfg.impl.save_every_nth_step > 0 and
+                        (self.steps + 1) % self.cfg.impl.save_every_nth_step == 0 and
+                        self.steps != 0 and self.cfg.impl.save_intermediate_checkpoints):
+                    if self.checkpoint_save_name is not None:
+                        name = self.checkpoint_save_name
+                    else:
+                        name = f"checkpoint_step_{self.steps + 1}"
                     model_path = self.save_model(name)
                     log.info(f"Saving to {model_path}")
 
@@ -241,6 +234,10 @@ class ModelTrainerInterface:
             validation_stats["epoch_time"] = epoch_time
             self.log(f"Training for epoch: {epoch}", training_stats, is_training=True)
             self.log(f"Eval for epoch: {epoch}", validation_stats, is_training=False)
+            if self.cfg.impl.save_intermediate_checkpoints:
+                name = f"checkpoint_end_{epoch}"
+                model_path = self.save_model(name)
+                log.info(f"Saving to {model_path}")
 
         # todo add eval every once in a while
         # log to wandb
@@ -256,7 +253,7 @@ class ModelTrainerInterface:
         if "mask" not in batch:
             batch["mask"] = (batch["input_ids"] != 0).int()
 
-        device_batch = self.to_device(batch, keys=["input_ids", "mask"])
+        device_batch = self.to_device(batch, keys=["input_ids", "mask", "labels"])
         # loss_vals = []
         # log_ppls = []
         # stream_depth = device_batch["input_ids"].shape[1]
@@ -285,12 +282,12 @@ class ModelTrainerInterface:
         stats = {}
         for data_idx, batch in enumerate(self.valid_loader):
             model_output = self.validation_loop(data_idx, batch)
-            stats = self.add_model_output_stats(model_output, stats)
+            stats = self.add_model_output_stats(model_output, stats, self.tracked_model_output_eval)
         calced_stats = self.gather_stats(stats)
         return calced_stats
 
     def validation_loop(self, idx, batch):
-        device_batch = self.to_device(batch, keys=["input_ids", "mask"])
+        device_batch = self.to_device(batch, keys=["input_ids", "mask", "labels"])
         outputs = self.forward_inference(device_batch)
         metrics = self.calc_metrics(device_batch, outputs)
         return metrics
@@ -316,9 +313,16 @@ class ModelTrainerInterface:
             log.warning(f"Cannot load checkpoint {ckpt_path}")
             return {}
 
-    def add_model_output_stats(self, model_outputs: Dict[str, Any], intermediate_stats: Dict[str, Any]) -> Dict[str, Any]:
+    def add_model_output_stats(self, model_outputs: Dict[str, Any],
+                               intermediate_stats: Dict[str, Any],
+                               stats_list: List[str] = None,  # can pass in list of desired stats
+                               ) -> Dict[str, Any]:
         intermediate_stats["batches"] = intermediate_stats.get("batches", 0) + 1
+        if stats_list is None:
+            stats_list = model_outputs.keys()
         for k, v in model_outputs.items():
+            if k not in stats_list:
+                continue
             prev = intermediate_stats.get(k, [])
             if len(v.shape) == 0:
                 prev.append(v.detach().item())
@@ -337,46 +341,53 @@ class ModelTrainerInterface:
         count = stats.get("batches", 1)
         output_stats["batches"] = count
 
-        output_stats["loss"] = sum(stats.get("loss", [float("NaN")])) / count
-        output_stats["accuracy"] = sum(stats.get("accuracy", [float("NaN")])) / count
-
-        target_inds = torch.cat(stats.get("target_inds", []))
-        target_probs = torch.cat(stats.get("target_probs", []), dim=1)
+        if "loss" in stats:
+            output_stats["loss"] = sum(stats["loss"]) / count
+        if "accuracy" in stats:
+            output_stats["accuracy"] = sum(stats["accuracy"]) / count
+        if "target_inds" in stats:
+            target_inds = torch.cat(stats["target_inds"])
+        if "target_probs" in stats:
+            target_probs = torch.cat(stats["target_probs"])
 
         # Calculate AUC
-        auc = multiclass_auroc(target_probs.T, target_inds, num_classes=target_probs.shape[0], thresholds=None)
-        output_stats["auc"] = auc.item()
+        try:
+            auc = multiclass_auroc(target_probs.T, target_inds, num_classes=target_probs.shape[0], thresholds=None)
+            output_stats["auc"] = auc.item()
+            output_stats["f1"] = f1_score(target_probs.T, target_inds, num_classes=target_probs.shape[0], task="multiclass")
+        except:
+            pass
 
-        output_stats["accuracy"] = sum(stats.get("accuracy", [float("NaN")])) / count
-
-        # calculate stats if consolidated targets (i.e. 0,1,2 -> 0 and 3,4 -> 1)
-        if "accuracy_consolidated" in stats:
-            output_stats["accuracy_consolidated"] = sum(stats.get("accuracy_consolidated", [float("NaN")])) / count
-
-            target_inds_consolidated = torch.cat(stats.get("target_inds_consolidated", []))
-            target_probs_consolidated = torch.cat(stats.get("target_probs_consolidated", []), dim=1)
-
-            # Calculate AUC
-            auc = multiclass_auroc(target_probs_consolidated.T, target_inds_consolidated, num_classes=target_probs_consolidated.shape[0], thresholds=None)
-            output_stats["auc_consolidated"] = auc.item()
+        if "accuracy" in stats:
+            output_stats["accuracy"] = sum(stats["accuracy"]) / count
 
         output_stats = utils.collect_memory_usage(output_stats, device)
         return output_stats
 
     def calc_metrics(self, device_batch: Dict[str, Any], model_outputs: Dict[str, Any]) -> Dict[str, Any]:
-        loss = model_outputs["loss"]
-        logits = model_outputs["logits"]
         metrics = {}
-        metrics["loss"] = loss.clone().detach().to("cpu")
-        # metrics["logits"] = logits[:, -1, :]
-        # metrics["log_perplexity"] = loss.clone().detach()
+        if "loss" in model_outputs:
+            loss = model_outputs["loss"]
+            metrics["loss"] = loss.clone().detach().to("cpu")
+        logits = model_outputs["logits"]
 
         # Convert logits over all vocabulary to target probability for use in accuracy
-        mask = device_batch["mask"][:, 1:]  # Only look where target is from "is_fraud"
+        label_mask = device_batch["mask"][:, 1:]  # mask of where the labels are
+
+        # # where should metrics be calculated (like auc only on row labels)
+        if self.metric_calc_mode == "last":
+            mask = torch.zeros_like(label_mask, device=label_mask.device)
+            mask[torch.arange(label_mask.size(0)), torch.argmax((label_mask == 1).long().cumsum(dim=1) * label_mask, dim=1)] = 1
+        elif self.metric_calc_mode == "labels":
+            mask = label_mask
+        else:
+            raise
+
         mask_flattened_shifted = mask.reshape(-1)
+        # todo bos eos
         shifted_outputs = logits[..., :-1, :].contiguous()
         logits_flattened = shifted_outputs.view(-1, shifted_outputs.shape[-1])
-        shifted_labels = device_batch["input_ids"][..., 1:].contiguous()
+        shifted_labels = device_batch["labels"].contiguous()
         labels_flattened = shifted_labels.view(-1)
 
         selected_logits = logits_flattened[mask_flattened_shifted == 1, :]
@@ -393,6 +404,11 @@ class ModelTrainerInterface:
         consolidation_map = torch.tensor(consolidation_map).to(target_inds.device)
         target_probs = F.softmax(target_logits, dim=0)
 
+        if len(self.consolidation_map) > 1:
+            target_probs, target_inds = self.consolidate_column_values(consolidation_map, target_probs, target_inds)
+        assert (target_inds >= 0).all(), "all possible logits found"
+        assert target_probs.sum(dim=0).allclose(torch.tensor(1.0)), "all probs add to 1"
+
         # Calculate AUC
         metrics["target_probs"] = target_probs.to("cpu")
         metrics["target_inds"] = target_inds.to("cpu")
@@ -400,18 +416,6 @@ class ModelTrainerInterface:
         preds = torch.argmax(target_probs, dim=0)  # (b*n/tokens_per_trans)
         accuracy = (preds == target_inds).float().mean()
         metrics["accuracy"] = accuracy.detach().to("cpu")
-
-        if len(self.consolidation_map) > 0:
-            # this is a way to map any outputs to another space.
-            # For example if the scores are 1-5, this is a way to make them 0 or 1 for high low
-            target_probs_consolidated, target_inds_consolidated = self.consolidate_column_values(consolidation_map, target_probs, target_inds)
-            metrics["target_probs_consolidated"] = target_probs_consolidated.to("cpu")
-            metrics["target_inds_consolidated"] = target_inds_consolidated.to("cpu")
-            preds = torch.argmax(target_probs_consolidated, dim=0)  # (b*n/tokens_per_trans)
-            accuracy = (preds == target_inds_consolidated).float().mean()
-            metrics["accuracy_consolidated"] = accuracy.detach().to("cpu")
-            assert (target_inds_consolidated >= 0).all(), "all possible logits found"
-            assert target_probs_consolidated.sum(dim=0).allclose(torch.tensor(1.0)), "all probs add to 1"
 
         return metrics
 
@@ -446,19 +450,19 @@ class ModelTrainerInterface:
 
     def forward(self, batch, **kwargs):
         input_ids = batch["input_ids"].clone()
-        mask = None
-        if self.mask_inputs:
-            mask = batch["mask"].clone()
-        model_outputs, loss = self.model(input_ids, mask=mask)
-        if loss not in model_outputs:
-            model_outputs["loss"] = loss
+        labels = batch["labels"].clone()
+        mask = batch["mask"].clone()
+        model_outputs = self.model(input_ids=input_ids, target_mask=mask, labels=labels)
         return model_outputs
 
     @torch.no_grad()
     @torch._dynamo.disable()
     def forward_inference(self, batch, **kwargs):
-        # todo right now its the same as forward
-        return self.forward(batch, **kwargs)
+        input_ids = batch["input_ids"].clone()
+        mask = batch["mask"].clone()
+        model_outputs = self.model(input_ids=input_ids, target_mask=mask)
+        return model_outputs
+
 
     def backward(self, loss):
         loss.backward()
@@ -469,15 +473,17 @@ class ModelTrainerInterface:
 
     def log(self, message: str, metrics: Dict[str, Any], is_training: bool):
         kw_str = ""
-        kw_str += f'''{f"batches: {metrics['batches']}":12s} ''' if 'batches' in metrics else ""
-        kw_str += f'''{f"Total dur: {utils.format_time(metrics['total_elapsed_time'], 2)}":21s} ''' if 'total_elapsed_time' in metrics else ""
-        kw_str += f'''{f"Epoch dur: {utils.format_time(metrics['epoch_time'], 2)}":21s} ''' if 'epoch_time' in metrics else ""
-        kw_str += f'''{f"avg/step: {utils.format_time(metrics['step_avg_time'], 2)}":21s} ''' if 'step_avg_time' in metrics else ""
+        kw_str += f'''{f"batches: {metrics['batches']}":14s} ''' if 'batches' in metrics else ""
+        kw_str += f'''{f"Total dur: {utils.format_time(metrics['total_elapsed_time'], 2)}":25s} ''' if 'total_elapsed_time' in metrics else ""
+        kw_str += f'''{f"Epoch dur: {utils.format_time(metrics['epoch_time'], 2)}":25s} ''' if 'epoch_time' in metrics else ""
+        kw_str += f'''{f"avg/step: {utils.format_time(metrics['step_avg_time'], 2)}":25s} ''' if 'step_avg_time' in metrics else ""
         kw_str += f'''{f"loss: {metrics['loss']:7.4f}":12s} ''' if 'loss' in metrics else ""
         kw_str += f'''{f"acc: {metrics['accuracy']:4.2%}":12s} ''' if 'accuracy' in metrics else ""
-        kw_str += f'''{f"acc consol: {metrics['accuracy_consolidated']:4.2%}":12s} ''' if 'accuracy_consolidated' in metrics else ""
         kw_str += f'''{f"auc: {metrics['auc']:7.4f}":12s} ''' if 'auc' in metrics else ""
-        kw_str += f'''{f"auc consol: {metrics['auc_consolidated']:7.4f}":12s} ''' if 'auc_consolidated' in metrics else ""
+        kw_str += f'''{f"f1: {metrics['f1']:7.4f}":12s} ''' if 'f1' in metrics else ""
+        # kw_str += f'''{f"acc consol: {metrics['accuracy_consolidated']:4.2%}":12s} ''' if 'accuracy_consolidated' in metrics else ""
+        # kw_str += f'''{f"auc consol: {metrics['auc_consolidated']:7.4f}":12s} ''' if 'auc_consolidated' in metrics else ""
+        # kw_str += f'''{f"f1 consol: {metrics['f1_consolidated']:7.4f}":12s} ''' if 'f1_consolidated' in metrics else ""
         if metrics.get("VRAM", 0.0) > 0.0:
             kw_str += f'''{f"Mem (VRAM/RAM): {metrics['VRAM']:5.4f}GB/{metrics['RAM']:5.4f}":15s}GB '''
             # kw_str += f'''{f"Mem (USAGE): {metrics['Usage']:5.4f}GB/{metrics['Total']:5.4f}":15s}GB '''
@@ -487,7 +493,7 @@ class ModelTrainerInterface:
         log.info(f"{message:25s} | {kw_str}")
 
         if self.setup.get("wandb_enabled", False):
-            logged = ["batches", "epoch_time", "total_elapsed_time", "step_avg_time", "loss", "accuracy", "auc"]
+            logged = ["batches", "epoch_time", "total_elapsed_time", "step_avg_time", "loss", "accuracy", "auc", "f1"]
             prefix = "train_" if is_training else "eval_"
             wandb_metrics = {f"{prefix}{k}": v for k, v in metrics.items() if k in logged}
             wandb_metrics["epoch"] = self.epoch
