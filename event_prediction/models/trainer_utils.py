@@ -230,8 +230,12 @@ class ModelTrainerInterface:
             training_stats["step_avg_time"] = (elapsed_times[2] - eval_time) / (self.steps - epoch_start_step)
             eval_time = 0
 
+            training_stats["total_elapsed_time"] = total_time
+            training_stats["epoch_time"] = epoch_time
+
             validation_stats["total_elapsed_time"] = total_time
             validation_stats["epoch_time"] = epoch_time
+
             self.log(f"Training for epoch: {epoch}", training_stats, is_training=True)
             self.log(f"Eval for epoch: {epoch}", validation_stats, is_training=False)
             if self.cfg.impl.save_intermediate_checkpoints:
@@ -348,7 +352,7 @@ class ModelTrainerInterface:
         if "target_inds" in stats:
             target_inds = torch.cat(stats["target_inds"])
         if "target_probs" in stats:
-            target_probs = torch.cat(stats["target_probs"])
+            target_probs = torch.cat(stats["target_probs"], dim=1)
 
         # Calculate AUC
         try:
