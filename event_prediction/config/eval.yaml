@@ -28,15 +28,22 @@ preprocess_only: False
 model_dir: models
 model_save_name:
 checkpoint_name: final
+checkpoint_save_name:
 
+dryrun: False
+
+
+experiment_folder_name:
 
 hydra:
   sweep:
     dir: ${base_dir}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   run:
-    dir: ${base_dir}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+#    dir: ${base_dir}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${base_dir}/${experiment_folder_name}/${name}/${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
     chdir: True
+
 
 seed: # Optional: Set initial seed
 name: default # A name for this run [will be used for the outputs folder]

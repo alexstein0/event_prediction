@@ -49,11 +49,15 @@ def main_eval(cfg, setup=None) -> Dict:
     tokenized_data = data_preparation.split_data_by_column(tokenized_data, "User")
 
     test_user_list = data_preparation.load_train_test_split(os.path.join(get_original_cwd(), cfg.model_dir, cfg.model_save_name))["test"]
+
+    if cfg.dryrun:
+        test_user_list = tokenized_data.keys()
+
     tokenized_data = DatasetDict({key: tokenized_data[key] for key in test_user_list})
     dataloaders = {"test": data_preparation.prepare_validation_dataloader(tokenized_data, tokenizer, cfg)}
     val_loader = dataloaders["test"]
 
-    log.info(f"Num val loader batches: {len(val_loader)}")
+    log.info(f"Num val users: {len(test_user_list)}, Num val loader batches: {len(val_loader)}")
     log.info(f"Number of Columns: {val_loader.dataset.num_columns}")
     sample_size = val_loader.dataset.data.shape[1]
     log.info(f"Sequence length (rows): {cfg.model.seq_length}")
@@ -82,7 +86,7 @@ def main_eval(cfg, setup=None) -> Dict:
     model = model_interface.model
     model_size = sum(t.numel() for t in model.parameters())
     vocab_size = len(tokenizer.vocab)
-    log.info(f"Model Name: {model.model.name_or_path}")
+    log.info(f"Model Name: {model.name_or_path}")
     log.info(f"Model size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)

@@ -184,17 +184,29 @@ def extract_gzip(data: io.BytesIO) -> io.BytesIO:
 
 
 def get_timestamps_from_str(X: pd.DataFrame,
-                            year_col: str="Year",
-                            month_col: str="Month",
-                            day_col: str="Day",
-                            time_col: str="Time") -> pd.Series:
+                            year_col: str = "Year",
+                            month_col: str = "Month",
+                            day_col: str = "Day",
+                            time_col: str = "Time") -> pd.Series:
     """Return a pd.Series of datetime objects created from a dataframe with columns 'Year', 'Month', 'Day', 'Time'"""
-    X_hm = X[time_col].str.split(
-        ":", expand=True
-    )  # Expect "Time" to be in the format "HH:MM"
+    try:
+        X_hm = X[time_col].str.split(
+            ":", expand=True
+        )  # Expect "Time" to be in the format "HH:MM"
+        hour = X_hm[0]
+        minute = X_hm[1]
+    except:
+        try:
+            hour = X["hour"]  # todo case sensitive
+        except:
+            hour = "00"
+        try:
+            minute = X["minute"]  # todo case sensitive
+        except:
+            minute = "00"
     d = pd.to_datetime(
         dict(
-            year=X[year_col], month=X[month_col], day=X[day_col], hour=X_hm[0], minute=X_hm[1]
+            year=X[year_col], month=X[month_col], day=X[day_col], hour=hour, minute=minute
         )
     )
     return d

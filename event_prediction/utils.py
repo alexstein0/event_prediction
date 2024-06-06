@@ -326,7 +326,7 @@ def save_to_table(out_dir, table_name, dryrun, **kwargs):
     # Check for file
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
-    fname = os.path.join(out_dir, f"table_{table_name}.csv")
+    fname = os.path.join(out_dir, f"table-{table_name}.csv")
     fieldnames = list(kwargs.keys())
     # Read or write header
     try:
@@ -376,7 +376,7 @@ def set_deterministic():
 def dump_metrics(cfg, metrics):
     """Simple yaml dump of metric values."""
 
-    filepath = f"metrics_{cfg.name}.yaml"
+    filepath = f"metrics_{cfg.name}"
     sanitized_metrics = dict()
     for metric, val in metrics.items():
         metric = " ".join(metric.split("_"))
@@ -391,8 +391,11 @@ def dump_metrics(cfg, metrics):
         else:
             log.info(f"{metric:20s} {val}")
 
-    with open(filepath, "w") as yaml_file:
+    with open(f"{filepath}.yaml", "w") as yaml_file:
         yaml.dump(sanitized_metrics, yaml_file, default_flow_style=False)
+
+    with open(f"{filepath}.json", "w") as json_file:
+        json.dump(sanitized_metrics, json_file, indent=2)
 
 
 def _initialize_wandb(setup, cfg):
@@ -507,14 +510,17 @@ def get_time_deltas(*times, set_format=True):
     for i in range(len(times)):
         dt = now - times[i]
         if set_format:
-            dt = format_time(dt)
+            dt = format_time(dt, decimals=3)
         output.append(dt)
     return output
 
+
 def format_time(seconds: int, decimals=-1) -> str:
-    dt = str(datetime.timedelta(seconds=seconds))[:11]
+    dt = str(datetime.timedelta(seconds=seconds))
     if decimals >= 0:
         splitted = dt.split(".")
-        after = splitted[1][:decimals]
-        dt = ".".join([splitted[0], after])
+        if len(splitted) > 1:
+            after = splitted[1][:decimals]
+            dt = ".".join([splitted[0], after])
     return dt
+

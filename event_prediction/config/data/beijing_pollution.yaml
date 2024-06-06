@@ -4,7 +4,7 @@ defaults:
 
 size: "" #"_small"
 
-name: beijing_pollution
+name: beijing_pollution${data.size}
 
 url: #https://archive.ics.uci.edu/static/public/501/beijing+multi+site+air+quality+data.zip
 
@@ -20,7 +20,7 @@ categorical_columns:
   - wd
 
 numeric_columns:
-  - Amount
+#  - Amount
   - hour
   - total_minutes_from_last
   - year

@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from transformers import GPT2LMHeadModel, AutoConfig, GPT2Model, AutoModelForCausalLM
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss
 import torch.nn.functional as F
 
 import logging
@@ -25,7 +25,7 @@ class Decoder(GPT2LMHeadModel):
         self.mask_token_id = tokenizer.mask_token_id
         self.percent_mask_all_labels_in_input = cfg.percent_mask_all_labels_in_input
         self.percent_mask_labels_in_input = cfg.percent_mask_labels_in_input
-        self.sequence_label_type = cfg.sequence_label_type  # 'last',  # or 'any' or none
+        self.sequence_label_type = cfg.sequence_label_type  # 'last', 'all', 'any' or none/labels
         self.epoch_to_switch = cfg.epoch_to_switch
         self.loss_calc_mode = cfg.loss_calc_mode  # all (all tokens) last (last label) or labels (all labels)
         # self.metric_calc_mode = cfg.metric_calc_mode  # last (last label) or labels (all labels)
@@ -36,6 +36,10 @@ class Decoder(GPT2LMHeadModel):
         assert (self.bos_token_id is None and self.eos_token_id is None) or (self.bos_token_id is not None and self.eos_token_id is not None), f"Either both none or both not none:{self.bos_token_id}, {self.eos_token_id}"
         if cfg.loss_fn == "CrossEntropyLoss":
             self.loss_fn = CrossEntropyLoss(ignore_index=-100)
+        # elif cfg.loss_fn == "RMSE":
+        #     def RMSELoss(guess, target):
+        #         return torch.sqrt(torch.mean((guess - target) ** 2))
+        #     self.loss_fn = RMSELoss
         else:
             log.warning(f"Expected 'CrossEntropyLoss' but got {cfg.loss_fn}, cannot train")
             raise NotImplementedError()
@@ -52,15 +56,34 @@ class Decoder(GPT2LMHeadModel):
                 use_cache=True,
                 target_mask=None
                 ):
-        if self.percent_mask_all_labels_in_input > 0.0:  # randomly mask all labels in an input row
-            mask_mask = torch.rand(input_ids.size(0), device=input_ids.device) < self.percent_mask_all_labels_in_input
-            input_ids[(target_mask.T*mask_mask).T == 1] = self.mask_token_id
-            # inputs_embeds[target_mask == 1] = -100  # todo
+        mask_mask = target_mask.clone()  # masked candidates
+        row_rand = torch.rand(mask_mask.size(0), device=input_ids.device)
 
-        if self.percent_mask_labels_in_input > 0.0:  # randomly mask each label in an input row
-            mask_mask = torch.rand(*input_ids.size(), device=input_ids.device) < self.percent_mask_labels_in_input
-            input_ids[(mask_mask & target_mask) == 1] = self.mask_token_id
-            # inputs_embeds[target_mask == 1] = -100  # todo
+        # mask_mask = torch.rand(*input_ids.size(), device=input_ids.device) < self.percent_mask_labels_in_input
+        # input_ids[(mask_mask & target_mask) == 1] = self.mask_token_id
+        # input_ids[(target_mask.T*mask_mask).T == 1] = self.mask_token_id
+        # todo can probably do much faster
+        for i in range(input_ids.size(0)):
+            # randomly mask all labels in an input row
+            if row_rand[i] < self.percent_mask_all_labels_in_input:  # will be masked fully masked
+                continue
+
+            elif row_rand[i] < self.percent_mask_all_labels_in_input + self.percent_mask_labels_in_input:  # will mask randomly
+                # randomly mask each label in an input row
+                mask_candidates_count = mask_mask.sum(1)[i]
+                if mask_candidates_count < 2:  # dont want to mask all or none
+                    mask_mask[0, :] = 0
+                    continue
+                mask_count = torch.randint(low=1, high=mask_candidates_count, size=(1,))
+                masked_labels = torch.randperm(mask_candidates_count)[:mask_count]
+                lab_mask = torch.zeros(mask_candidates_count, device=input_ids.device).long()
+                lab_mask[masked_labels] = 1
+                mask_mask[i, mask_mask[i] == 1] = lab_mask
+
+            else:  # will not be masked
+                mask_mask[i, :] = 0
+
+        input_ids[mask_mask == 1] = self.mask_token_id
 
         model_outputs = self.transformer(
             input_ids,
@@ -74,25 +97,28 @@ class Decoder(GPT2LMHeadModel):
         )
         hidden_states = model_outputs[0]
         logits = self.lm_head(hidden_states)
-        sequence_logits = self.sequence_head(hidden_states[:, -1, :])
-        outputs = {"logits": logits, "sequence_logits": sequence_logits}
+        # sequence_logits = self.sequence_head(hidden_states[:, -1, :])
+        outputs = {
+            "logits": logits,
+            # "sequence_logits": sequence_logits
+        }
 
         if labels is not None:
-            if self.sequence_label_type == 'last':
-                # the last label in a sequence
-                labels_for_sequence = input_ids[
-                    torch.arange(input_ids.size(0)), torch.argmax((target_mask == 1).long().cumsum(dim=1) * target_mask,
-                                                                  dim=1)]
-                loss = self.loss_fn(sequence_logits.view(-1, sequence_logits.shape[-1]), labels_for_sequence.view(-1))
-                outputs['sequence_loss'] = loss
-            elif self.sequence_label_type == 'all':
-                # todo
-                labels_for_sequence = input_ids * target_mask  # returns all the labels in the sequence
-            elif self.sequence_label_type == 'any':
-                # todo
-                pass
-            else:
-                labels_for_sequence = [-1]  # no label for sequence
+            # todo this code is not used but could be if we wanted to add a sequence level loss term
+            # if self.sequence_label_type == 'last':
+            #     # the last label in a sequence
+            #     m = torch.argmax((target_mask == 1).long().cumsum(dim=1) * target_mask, dim=1)
+            #     labels_for_sequence = input_ids[torch.arange(input_ids.size(0)), m]
+            #     loss = self.loss_fn(sequence_logits.view(-1, sequence_logits.shape[-1]), labels_for_sequence.view(-1))
+            #     outputs['sequence_loss'] = loss
+            # elif self.sequence_label_type == 'all':
+            #     # todo
+            #     labels_for_sequence = input_ids * target_mask  # returns all the labels in the sequence
+            # elif self.sequence_label_type == 'any':
+            #     # todo
+            #     pass
+            # else:
+            #     labels_for_sequence = [-1]  # no label for sequence
 
             shifted_logits = logits[..., 1:-2, :].contiguous()  # remove the start/end of sequence?
             shifted_labels = labels[..., 1:-1].contiguous()  # remove the start/end of sequence?
@@ -100,12 +126,17 @@ class Decoder(GPT2LMHeadModel):
             # Which part of the sequence to calculate the loss on, by default it is every token in the sequence
             loss_mask = torch.ones_like(target_mask, device=shifted_labels.device)
             if 0 <= self.epoch_to_switch <= self.epoch:
-                if self.loss_calc_mode == "labels":
+                if self.loss_calc_mode is None or self.loss_calc_mode == "all":
+                    pass
+                elif self.loss_calc_mode == "labels":
                     loss_mask = target_mask
                 elif self.loss_calc_mode == "last":
                     loss_mask = torch.argmax((target_mask == 1).long().cumsum(dim=1) * target_mask, dim=1)
-                else:  # self.loss_calc_mode == "all":
+                elif self.loss_calc_mode == "any":
+                    # todo
                     pass
+                else:
+                    raise
 
             shifted_labels = torch.mul(shifted_labels, loss_mask[..., 2:-1]).long()
             shifted_labels[shifted_labels == 0] = -100

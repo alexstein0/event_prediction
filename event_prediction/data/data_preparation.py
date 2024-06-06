@@ -148,7 +148,9 @@ def get_dataset_and_collator(tokenized_dataset: Dataset, tokenizer, cfg: DictCon
                                                        bos_id=tokenizer.bos_token_id,
                                                        eos_id=tokenizer.eos_token_id,
                                                        randomize_order=cfg.model.randomize_order,
-                                                       fixed_cols=cfg.model.fixed_cols)
+                                                       fixed_cols=cfg.model.fixed_cols,
+                                                       label_position=cfg.model.label_position
+                                                       )
         collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
 
     elif cfg.model.training_objective == "masked":
@@ -306,15 +308,25 @@ def tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float = .
     return data
 
 
-def get_data_and_tokenize(cfg, data_processor, tokenizer, split=.1):
+def get_data_and_tokenize(cfg, data_processor, tokenizer):
     dataset = get_data_from_raw(cfg.data, cfg.data_dir)
     dataset, col_to_id_dict = preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
+    # dataset[["reviewerID", "unixReviewTime", "asin", "verified", "overall"]].to_csv("/Users/alex/Documents/School/Maryland/Research/event_prediction/data/submit/raw")
     dataset = convert_to_huggingface(dataset, data_processor)
+    # [[x["User"]] + x["text"].split() for x in dataset]
     tokenizer.add_special_tokens({'pad_token': '[PAD]', 'unk_token': '[UNK]'})
     log.info("DATASET PREPROCESSED, BEGINNING TOKENIZATION")
     dataset = tokenize_data(dataset, tokenizer)
+    # [[x["User"]] + x["input_ids"] for x in dataset]
     log.info("DATASET TOKENIZED")
     return dataset, col_to_id_dict
+    # a = [[x["User"]] + x["input_ids"] for x in dataset]
+    # import csv
+    # path = "/Users/alex/Documents/School/Maryland/Research/event_prediction/data/submit/tokens.csv"
+    #
+    # with open(path, 'w', newline='') as f:
+    #     writer = csv.writer(f)
+    #     writer.writerows(a)
 
 
 def save_dataset(dataset: Dataset, path: str):
@@ -357,7 +369,8 @@ class TabularDataset(data.Dataset):
                  randomize_order: bool = False,
                  fixed_cols: int = 1,
                  bos_id: int = 0,
-                 eos_id: int = 0
+                 eos_id: int = 0,
+                 label_position: int=-1
                  ):
         assert pad_id is not None
         self.pad_id = pad_id
@@ -365,11 +378,14 @@ class TabularDataset(data.Dataset):
         self.eos_id = eos_id if eos_id is not None else pad_id
         self.seq_length = seq_length  # number of ROWS in a sequence
         self.num_rows = sum([x for x in tokenized_dataset.num_rows.values()])
-        self.user_ids = list(tokenized_dataset.keys())  # needs to be split by user already
+        self.user_ids = list(set(tokenized_dataset.keys()))  # needs to be split by user already
         self.num_columns = len(tokenized_dataset[self.user_ids[0]]["input_ids"][0])
         self.randomize_order = randomize_order
         self.fixed_cols = fixed_cols + 1  # always fix the new row token
-        self.label_col_position = self.num_columns - 2  # where the label is within a row (new row token is last)
+        if label_position < 0 or label_position > self.num_columns - 1:
+            self.label_col_position = self.num_columns - 2  # where the label is within a row (new row token is last)
+        else:
+            self.label_col_position = label_position  # where the label is within a row (new row token is last)
         self.data, self.label_mask = self.prepare_data(self.user_ids, tokenized_dataset)
         # todo we dont need to keep the labels, but we can just keep track of the randomized mapping and can get label during eval time
         self.epoch = 0

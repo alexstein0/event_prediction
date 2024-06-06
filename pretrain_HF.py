@@ -48,13 +48,13 @@ def main_pretrain(cfg, setup=None) -> Dict:
 
     train_loader = dataloaders["train"]
     val_loader = dataloaders["test"]
-    # train_users = train_loader.dataset.user_ids
-    # val_users = val_loader.dataset.user_ids
+    train_users = train_loader.dataset.user_ids
+    val_users = val_loader.dataset.user_ids
     # metrics["train_users"] = train_users
     # metrics["val_users"] = val_users
 
-    log.info(f"Num train loader batches: {len(train_loader)}")
-    log.info(f"Num val loader batches: {len(val_loader)}")
+    log.info(f"Num train users: {len(set(train_users))}, Num train loader batches: {len(train_loader)}")
+    log.info(f"Num val users: {len(set(val_users))}, Num val loader batches: {len(val_loader)}")
     log.info(f"Number of Columns: {train_loader.dataset.num_columns}")
     sample_size = train_loader.dataset.data.shape[1]
     log.info(f"Sequence length (rows): {cfg.model.seq_length}")
@@ -65,6 +65,10 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Memory info: {utils.collect_memory_usage({}, setup.get('device', None))}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")
+    # import numpy as np
+    # n = x["input_ids"].numpy().astype(int)
+    # np.savetxt("/Users/alex/Documents/School/Maryland/Research/event_prediction/data/submit/batch.csv", n,
+    #            delimiter=",", fmt='%d')
     log.info(f"------------- DATASET PROCESSED -------------")
 
     # GET MODEL
@@ -103,6 +107,12 @@ def main_pretrain(cfg, setup=None) -> Dict:
     metrics.update(eval_metrics)
     # train_metrics = model_interface.train_HF(dataloaders["train"])
     model_path = model_interface.save_model("final")
+    metrics["save_path"] = model_path
+
+    metrics["consolidated"] = cfg.consolidate
+    metrics["mask"] = cfg.model.percent_mask_all_labels_in_input > 0 or cfg.model.percent_mask_labels_in_input > 0
+    metrics["randomize"] = cfg.model.randomize_order
+
     log.info(f"Saving to {model_path}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")
