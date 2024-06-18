@@ -27,7 +27,7 @@ def get_huggingface_dataset(cfg):
     return dataset['train']
 
 
-def bytes_to_df(bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
+def bytes_to_df(data_bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
     _, ext = os.path.splitext(urlparse(cfg.url).path)
     filepath = os.path.join(data_dir, f"{cfg.name}{ext}")
@@ -35,24 +35,24 @@ def bytes_to_df(bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False
     if ext == ".tgz":
         if save_tar_to_disk:
             os.makedirs(data_dir, exist_ok=True)
-            write_bytes(bytes, filepath)
+            write_bytes(data_bytes, filepath)
         try:
-            bytes = extract_tar(bytes)
+            data_bytes = extract_tar(data_bytes)
         except tarfile.ReadError as e:
             log.error(f"Error when trying to extract file. Double-check that the URL actually exists: {cfg.url}")
             raise
         if cfg.raw_type == "csv":
-            df = pd.read_csv(bytes)
+            df = pd.read_csv(data_bytes)
         else:
             raise ValueError
 
     elif ext == ".gz":
         if save_tar_to_disk:
             os.makedirs(data_dir, exist_ok=True)
-            write_bytes(bytes, filepath)
+            write_bytes(data_bytes, filepath)
         try:
             output = []
-            with gzip.open(bytes, mode='r') as lines:
+            with gzip.open(data_bytes, mode='r') as lines:
                 for line in lines:
                     row = line.decode('utf-8')
                     output.append(json.loads(row))
@@ -65,14 +65,14 @@ def bytes_to_df(bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False
         else:
             raise ValueError
     else:
-        df = pd.read_csv(bytes)
+        df = pd.read_csv(data_bytes)
     return df
 
 
 def download_and_save_data(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
     if cfg.url is not None:
-        bytes = download_data_from_url(cfg.url)
-        df = bytes_to_df(bytes, cfg, raw_data_dir_name, save_tar_to_disk, save_csv_to_disk)
+        data_bytes = download_data_from_url(cfg.url)
+        df = bytes_to_df(data_bytes, cfg, raw_data_dir_name, save_tar_to_disk, save_csv_to_disk)
     else:
         log.info(f"NO URL")
         df = get_data_from_raw(cfg)  # already locally in raw folder just needs processing
@@ -109,9 +109,9 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
         if not os.path.exists(filepath):
             log.info(f"Data not found at {filepath}.  First download dataset from {cfg.url} using download_and_save_data.py")
             raise IOError
-        bytes = read_bytes(filepath)
-        log.info(f"Loaded bytes from to {filepath}")
-        df = bytes_to_df(bytes, cfg)  # dont save the data, just convert to bytes
+        data_bytes = read_bytes(filepath)
+        log.info(f"Loaded data_bytes from to {filepath}")
+        df = bytes_to_df(data_bytes, cfg)  # dont save the data, just convert to data_bytes
     return df
 
 
