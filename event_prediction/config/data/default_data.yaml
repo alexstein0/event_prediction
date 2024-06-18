@@ -2,6 +2,8 @@ name: ???
 
 save_name:
 
+process_only: False
+
 transaction_seq_len:
 
 data_processor: ???

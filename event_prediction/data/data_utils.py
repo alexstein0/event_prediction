@@ -70,7 +70,7 @@ def bytes_to_df(data_bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=
 
 
 def download_and_save_data(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=False, save_csv_to_disk=False) -> pd.DataFrame:
-    if cfg.url is not None:
+    if cfg.url is not None and not cfg.process_only:
         data_bytes = download_data_from_url(cfg.url)
         df = bytes_to_df(data_bytes, cfg, raw_data_dir_name, save_tar_to_disk, save_csv_to_disk)
     else:
