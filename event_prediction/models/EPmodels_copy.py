@@ -23,6 +23,9 @@ class Decoder(GPT2LMHeadModel):
         self.bos_token_id = tokenizer.bos_token_id
         self.eos_token_id = tokenizer.eos_token_id
         self.mask_token_id = tokenizer.mask_token_id
+        if tokenizer.mask_token_id is None:
+            log.warning(f"mask token id {tokenizer.mask_token_id} was not provided")
+            self.mask_token_id = 0
         self.percent_mask_all_labels_in_input = cfg.percent_mask_all_labels_in_input
         self.percent_mask_labels_in_input = cfg.percent_mask_labels_in_input
         self.sequence_label_type = cfg.sequence_label_type  # 'last', 'all', 'any' or none/labels

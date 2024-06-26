@@ -285,8 +285,16 @@ def create_train_test_split_by_keys(data: DatasetDict, test_split: float) -> Dat
     all_options = data.keys()
     subset_size = max(1, int(len(all_options) * test_split))
     test_ids = random.sample(all_options, subset_size)
-    train = DatasetDict({k: v for k, v in data.items() if k not in test_ids})
-    test = DatasetDict({k: v for k, v in data.items() if k in test_ids})
+    train = {}
+    test = {}
+    for k, v in data.items():
+        if k in test_ids:
+            test[k] = v
+        else:
+            train[k] = v
+
+    train = DatasetDict(train)
+    test = DatasetDict(test)
     # train = DatasetDict({'0': train['0'].select([0,1])})
 
     return DatasetDict({"train": train, "test": test})

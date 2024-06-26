@@ -623,11 +623,15 @@ class ModelTrainerInterface:
         if self.setup.get("wandb_enabled", False):
             utils.wandb_log(wandb_metrics)
 
+        # save static data
         wandb_metrics["tags"] = self.cfg.wandb.tags
         wandb_metrics["name"] = self.cfg.name
         wandb_metrics["saved_name"] = self.model_save_name
         wandb_metrics["data_name"] = self.cfg.data.name
         wandb_metrics["lr"] = self.cfg.model.lr
+        wandb_metrics["batch_size"] = self.cfg.model.batch_size
+        wandb_metrics["seq_length"] = self.cfg.model.seq_length
+        wandb_metrics["seed"] = self.cfg.seed
         wandb_metrics["randomize_order"] = self.cfg.model.randomize_order
         wandb_metrics["masking"] = self.cfg.model.percent_mask_labels_in_input > 0 or self.cfg.model.percent_mask_all_labels_in_input > 0
         wandb_metrics["experiment_folder_name"] = self.cfg.experiment_folder_name

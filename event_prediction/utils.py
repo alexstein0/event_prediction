@@ -14,6 +14,7 @@ import collections
 
 import torch
 import torch._inductor.config
+import pandas as pd
 # import transformers
 
 
@@ -330,28 +331,18 @@ def save_to_table(out_dir, table_name, dryrun, **kwargs):
     fieldnames = list(kwargs.keys())
     # Read or write header
     try:
-        with open(fname, "r") as f:
-            reader = csv.reader(f, delimiter="\t")
-            header = next(reader)  # noqa  # this line is testing the header
-            # assert header == fieldnames[:len(header)]  # new columns are ok, but old columns need to be consistent
-            # dont test, always write when in doubt to prevent erroneous table deletions
-    except Exception as e:  # noqa
-        if not dryrun:
-            # print('Creating a new .csv table...')
-            with open(fname, "w") as f:
-                writer = csv.DictWriter(f, delimiter="\t", fieldnames=fieldnames)
-                writer.writeheader()
-        else:
-            pass
+        df = pd.read_csv(fname)
+        # Convert the new_data dictionary to a DataFrame
+        new_data_df = pd.DataFrame([kwargs])
 
-    # Write a new row
-    if not dryrun:
-        # Add row for this experiment
-        with open(fname, "a") as f:
-            writer = csv.DictWriter(f, delimiter="\t", fieldnames=fieldnames)
-            writer.writerow(kwargs)
-    else:
-        pass
+        # Concatenate the new row to the existing DataFrame
+        updated_df = pd.concat([df, new_data_df], ignore_index=True, sort=False)
+
+    except Exception as e:
+        updated_df = pd.DataFrame([kwargs])
+
+    # Write the updated DataFrame back to a CSV file
+    updated_df.to_csv(fname, index=False)
 
 
 def set_random_seed(seed=233):
