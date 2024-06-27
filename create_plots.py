@@ -167,82 +167,83 @@ def plot(combined_df, save_path=None, dataset=None):
     plt.show()
 
 
-# Example usage
-ds = "EVAL_final_amazon"
-# ds = "EVAL_final_IBM_other"
+if __name__ == "__main__":
+    # Example usage
+    ds = "EVAL_final_amazon"
+    # ds = "EVAL_final_IBM_other"
 
-dir = f'/cmlscratch/astein0/event_prediction/outputs/{ds}'
-dir = f"/Users/alex/Documents/School/Maryland/Research/event_prediction/outputs/{ds}"
-train_eval = "eval"
-combine_latest_results(dir, train_eval)
+    dir = f'/cmlscratch/astein0/event_prediction/outputs/{ds}'
+    dir = f"/Users/alex/Documents/School/Maryland/Research/event_prediction/outputs/{ds}"
+    train_eval = "eval"
+    combine_latest_results(dir, train_eval)
 
-csv_path = f"/Users/alex/Documents/School/Maryland/Research/event_prediction/outputs/{ds}/combined_eval_results.csv"
-save_loc = f'combined_{train_eval}_results.png'
-# plot(pd.read_csv(csv_path, sep='\t'), os.path.join(dir, save_loc))
+    csv_path = f"/Users/alex/Documents/School/Maryland/Research/event_prediction/outputs/{ds}/combined_eval_results.csv"
+    save_loc = f'combined_{train_eval}_results.png'
+    # plot(pd.read_csv(csv_path, sep='\t'), os.path.join(dir, save_loc))
 
 
-# present data
-data_path = "/Users/alex/Documents/School/Maryland/Research/event_prediction/data/submit"
-tables = ["raw.csv", "split.csv", "tokens.csv", "batch.csv"]
-for t in tables:
-    path = os.path.join(data_path, t)
-    df = pd.read_csv(path)
+    # present data
+    data_path = "/Users/alex/Documents/School/Maryland/Research/event_prediction/data/submit"
+    tables = ["raw.csv", "split.csv", "tokens.csv", "batch.csv"]
+    for t in tables:
+        path = os.path.join(data_path, t)
+        df = pd.read_csv(path)
+        print(df)
+
+    def process_line(line):
+        # Split the line by commas
+        parts = line.split(',')
+        # Process each part
+        new_parts = []
+        for part in parts:
+            # Check if the part is a number and has less than 3 digits
+            if part.isdigit() and len(part) < 4:
+                new_parts.append(part + '\t')
+            else:
+                new_parts.append(part)
+        # Join the parts back into a string
+        return ''.join(new_parts)
+
+    data = [
+        "1,8,6,100,10,5,7,89,18,6,5,793,29,6,10,5,7,17,116,6,5,6,22,117,7,5,7,609,6,28,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        "1,7,6,500,8,5,703,8,6,11,5,7,6,86,25,5,6,102,11,8,5,7,8,748,6,5,11,6,8,33,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        "1,121,27,7,9,5,299,12,8,9,5,16,12,272,9,5,14,209,12,9,5,7,9,8,217,5,10,9,29,436,5,9,376,13,17,5,9,14,313,7,5,11,265,8,9,5,910,26,11,9,5,2",
+        "1,880,9,11,20,5,11,9,243,14,5,9,18,10,127,5,303,14,13,9,5,14,360,9,7,5,11,309,9,14,5,14,7,133,9,5,8,9,13,264,5,12,16,9,245,5,192,9,8,7,5,2",
+        "1,8,9,390,12,5,275,10,9,14,5,9,8,7,274,5,9,125,8,12,5,9,355,26,11,5,9,399,11,8,5,289,9,14,10,5,190,9,15,10,5,21,10,407,9,5,8,9,364,10,5,2",
+        "1,9,10,29,160,5,9,404,8,10,5,16,277,9,10,5,16,409,9,11,5,9,418,10,8,5,15,10,426,9,5,8,424,11,9,5,77,7,6,14,5,77,7,6,29,5,0,0,0,0,0,2",
+        "1,332,6,7,8,5,8,7,6,291,5,7,6,8,716,5,7,139,8,6,5,6,22,7,681,5,6,7,8,363,5,28,734,7,6,5,325,6,7,15,5,6,472,8,7,5,6,485,8,7,5,2",
+        "1,9,15,7,142,5,207,9,7,23,5,7,240,14,9,5,12,8,6,47,5,10,25,241,9,5,19,340,12,9,5,7,177,9,14,5,9,403,7,19,5,25,379,9,10,5,11,40,9,24,5,2",
+        "1,9,21,7,531,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        "1,21,7,410,9,5,7,14,6,483,5,9,7,8,83,5,15,7,83,9,5,9,10,8,346,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        "1,95,6,7,8,5,27,31,6,7,5,7,539,6,20,5,17,7,6,870,5,6,7,116,17,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        "1,28,600,7,6,5,8,9,385,7,5,6,7,21,683,5,9,559,8,7,5,6,8,7,428,5,27,7,652,6,5,6,462,14,7,5,9,7,490,14,5,6,173,7,8,5,7,606,6,21,5,2",
+        "1,8,417,6,7,5,8,10,6,487,5,7,6,8,347,5,7,9,18,92,5,8,9,7,397,5,17,7,455,9,5,7,25,9,516,5,688,7,6,8,5,869,6,7,8,5,863,28,7,6,5,2",
+        "1,6,7,8,225,5,223,7,16,6,5,6,7,8,135,5,7,6,8,615,5,7,6,8,56,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        "1,6,618,13,8,5,6,7,115,8,5,6,32,8,7,5,119,6,21,7,5,8,7,6,902,5,8,36,6,7,5,7,38,17,6,5,6,16,7,35,5,7,6,263,17,5,11,8,6,48,5,2",
+        "1,6,45,11,8,5,8,11,42,6,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
+        # Add more lines as needed...
+    ]
+
+    # Process each line
+    processed_data = [process_line(line) for line in data]
+
+    # Print the processed data
+    for line in processed_data:
+        print(line)
+
+    # create table
+    csv_path = f"/Users/alex/Documents/School/Maryland/Research/event_prediction/outputs/{ds}/combined_eval_results.csv"
+    df = pd.read_csv(csv_path, sep='\t')
+
     print(df)
+    df = df[df["data_name"] == 'amazon_movies_5core']
+    base = (df[df["experiment_name"]=="transaction-base"]).pivot(index="randomize_order", columns="masking", values="eval_auc")
+    both = (df[df["experiment_name"]=="transaction-masked_randomized"]).pivot(index="randomize_order", columns="masking", values="eval_auc")
+    print(base)
+    print(both)
 
-def process_line(line):
-    # Split the line by commas
-    parts = line.split(',')
-    # Process each part
-    new_parts = []
-    for part in parts:
-        # Check if the part is a number and has less than 3 digits
-        if part.isdigit() and len(part) < 4:
-            new_parts.append(part + '\t')
-        else:
-            new_parts.append(part)
-    # Join the parts back into a string
-    return ''.join(new_parts)
-
-data = [
-    "1,8,6,100,10,5,7,89,18,6,5,793,29,6,10,5,7,17,116,6,5,6,22,117,7,5,7,609,6,28,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    "1,7,6,500,8,5,703,8,6,11,5,7,6,86,25,5,6,102,11,8,5,7,8,748,6,5,11,6,8,33,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    "1,121,27,7,9,5,299,12,8,9,5,16,12,272,9,5,14,209,12,9,5,7,9,8,217,5,10,9,29,436,5,9,376,13,17,5,9,14,313,7,5,11,265,8,9,5,910,26,11,9,5,2",
-    "1,880,9,11,20,5,11,9,243,14,5,9,18,10,127,5,303,14,13,9,5,14,360,9,7,5,11,309,9,14,5,14,7,133,9,5,8,9,13,264,5,12,16,9,245,5,192,9,8,7,5,2",
-    "1,8,9,390,12,5,275,10,9,14,5,9,8,7,274,5,9,125,8,12,5,9,355,26,11,5,9,399,11,8,5,289,9,14,10,5,190,9,15,10,5,21,10,407,9,5,8,9,364,10,5,2",
-    "1,9,10,29,160,5,9,404,8,10,5,16,277,9,10,5,16,409,9,11,5,9,418,10,8,5,15,10,426,9,5,8,424,11,9,5,77,7,6,14,5,77,7,6,29,5,0,0,0,0,0,2",
-    "1,332,6,7,8,5,8,7,6,291,5,7,6,8,716,5,7,139,8,6,5,6,22,7,681,5,6,7,8,363,5,28,734,7,6,5,325,6,7,15,5,6,472,8,7,5,6,485,8,7,5,2",
-    "1,9,15,7,142,5,207,9,7,23,5,7,240,14,9,5,12,8,6,47,5,10,25,241,9,5,19,340,12,9,5,7,177,9,14,5,9,403,7,19,5,25,379,9,10,5,11,40,9,24,5,2",
-    "1,9,21,7,531,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    "1,21,7,410,9,5,7,14,6,483,5,9,7,8,83,5,15,7,83,9,5,9,10,8,346,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    "1,95,6,7,8,5,27,31,6,7,5,7,539,6,20,5,17,7,6,870,5,6,7,116,17,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    "1,28,600,7,6,5,8,9,385,7,5,6,7,21,683,5,9,559,8,7,5,6,8,7,428,5,27,7,652,6,5,6,462,14,7,5,9,7,490,14,5,6,173,7,8,5,7,606,6,21,5,2",
-    "1,8,417,6,7,5,8,10,6,487,5,7,6,8,347,5,7,9,18,92,5,8,9,7,397,5,17,7,455,9,5,7,25,9,516,5,688,7,6,8,5,869,6,7,8,5,863,28,7,6,5,2",
-    "1,6,7,8,225,5,223,7,16,6,5,6,7,8,135,5,7,6,8,615,5,7,6,8,56,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    "1,6,618,13,8,5,6,7,115,8,5,6,32,8,7,5,119,6,21,7,5,8,7,6,902,5,8,36,6,7,5,7,38,17,6,5,6,16,7,35,5,7,6,263,17,5,11,8,6,48,5,2",
-    "1,6,45,11,8,5,8,11,42,6,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2",
-    # Add more lines as needed...
-]
-
-# Process each line
-processed_data = [process_line(line) for line in data]
-
-# Print the processed data
-for line in processed_data:
-    print(line)
-
-# create table
-csv_path = f"/Users/alex/Documents/School/Maryland/Research/event_prediction/outputs/{ds}/combined_eval_results.csv"
-df = pd.read_csv(csv_path, sep='\t')
-
-print(df)
-df = df[df["data_name"] == 'amazon_movies_5core']
-base = (df[df["experiment_name"]=="transaction-base"]).pivot(index="randomize_order", columns="masking", values="eval_auc")
-both = (df[df["experiment_name"]=="transaction-masked_randomized"]).pivot(index="randomize_order", columns="masking", values="eval_auc")
-print(base)
-print(both)
-
-metric = "eval_auc_consolidated_last" if "eval_auc_consolidated_last" in df.columns else "eval_auc_last"
-relevant = df[["randomize_order", "masking", "experiment_name", metric,]]
-keyed = relevant.sort_values(["randomize_order", "masking", "experiment_name"])
-print(keyed)
+    metric = "eval_auc_consolidated_last" if "eval_auc_consolidated_last" in df.columns else "eval_auc_last"
+    relevant = df[["randomize_order", "masking", "experiment_name", metric,]]
+    keyed = relevant.sort_values(["randomize_order", "masking", "experiment_name"])
+    print(keyed)
 
