@@ -1,6 +1,6 @@
 import pandas as pd
 from transformers import DataCollatorForLanguageModeling
-from typing import List, Union, Dict, Tuple
+from typing import List, Union, Dict, Tuple, Any
 import torch
 from transformers.data.data_collator import _torch_collate_batch
 import os
@@ -261,8 +261,8 @@ def create_train_test_split(dataset: datasets.Dataset | DatasetDict, test_split:
     return dataset
 
 
-def load_train_test_split(path: str) -> Dict[str, List[str]]:
-    with open(os.path.join(path, "train_test_split.json"), 'r') as f:
+def load_static_info(path: str) -> Dict[str, Any]:
+    with open(os.path.join(path, "static_info.json"), 'r') as f:
         split = json.load(f)
     return split
 

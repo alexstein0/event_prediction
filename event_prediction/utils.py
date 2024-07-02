@@ -32,6 +32,7 @@ from omegaconf import OmegaConf, open_dict
 import transformers
 
 import wandb
+from typing import Dict
 
 log = logging.getLogger(__name__)
 os.environ["HYDRA_FULL_ERROR"] = "0"
@@ -343,6 +344,15 @@ def save_to_table(out_dir, table_name, dryrun, **kwargs):
 
     # Write the updated DataFrame back to a CSV file
     updated_df.to_csv(fname, index=False)
+
+
+def save_static_info(static_info: Dict, path: str):
+    static_file = os.path.join(path, "static_info.json")
+    if not os.path.isfile(static_file):
+        with open(static_file, "w") as f:
+            json.dump(static_info, f)
+        return True
+    return False
 
 
 def set_random_seed(seed=233):

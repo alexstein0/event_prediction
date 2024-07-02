@@ -329,18 +329,39 @@ class ModelTrainerInterface:
         return metrics
 
     def save_model(self, name: str):
-        model_path = os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
+        model_path = self.get_model_path()
         full_path = os.path.join(model_path, name)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         torch.save(self.model.state_dict(), full_path)
+
+        static_info = self.get_static_info()
         train_ids = self.train_loader.dataset.user_ids
         val_ids = self.valid_loader.dataset.user_ids
-        train_test_split = {"train": train_ids, "test": val_ids}
-        with open(os.path.join(model_path, "train_test_split.json"), "w") as f:
-            json.dump(train_test_split, f)
+        static_info["train_ids"] = train_ids
+        static_info["test_ids"] = val_ids
+        utils.save_static_info(static_info, model_path)
 
         return full_path
+
+    def get_model_path(self):
+        return os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
+
+    def get_static_info(self):
+        static_info = {}
+        static_info["tags"] = self.cfg.wandb.tags
+        static_info["name"] = self.cfg.name
+        static_info["saved_name"] = self.model_save_name
+        static_info["data_name"] = self.cfg.data.name
+        static_info["lr"] = self.cfg.model.lr
+        static_info["batch_size"] = self.cfg.model.batch_size
+        static_info["seq_length"] = self.cfg.model.seq_length
+        static_info["seed"] = self.cfg.seed
+        static_info["randomize_order"] = self.cfg.model.randomize_order
+        static_info["mask_all_pct"] = self.cfg.model.percent_mask_all_labels_in_input
+        static_info["mask_each_pct"] = self.cfg.model.percent_mask_labels_in_input
+        static_info["experiment_folder_name"] = self.cfg.experiment_folder_name
+        return static_info
 
     def get_checkpoint(self, ckpt_path):
         try:
@@ -624,17 +645,9 @@ class ModelTrainerInterface:
             utils.wandb_log(wandb_metrics)
 
         # save static data
-        wandb_metrics["tags"] = self.cfg.wandb.tags
-        wandb_metrics["name"] = self.cfg.name
-        wandb_metrics["saved_name"] = self.model_save_name
-        wandb_metrics["data_name"] = self.cfg.data.name
-        wandb_metrics["lr"] = self.cfg.model.lr
-        wandb_metrics["batch_size"] = self.cfg.model.batch_size
-        wandb_metrics["seq_length"] = self.cfg.model.seq_length
-        wandb_metrics["seed"] = self.cfg.seed
-        wandb_metrics["randomize_order"] = self.cfg.model.randomize_order
-        wandb_metrics["masking"] = self.cfg.model.percent_mask_labels_in_input > 0 or self.cfg.model.percent_mask_all_labels_in_input > 0
-        wandb_metrics["experiment_folder_name"] = self.cfg.experiment_folder_name
+        # todo dont need to repeat it each time
+        # static_info = self.get_static_info()
+        # wandb_metrics.update(static_info)
 
         if self.cfg.experiment_folder_name is None:
             csv_path = os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
@@ -643,6 +656,15 @@ class ModelTrainerInterface:
             csv_path = os.path.join(get_original_cwd(), self.cfg.base_dir, self.cfg.experiment_folder_name)
             table_name = f"{self.model_save_name}-{prefix}stats"
         utils.save_to_table(csv_path, table_name, self.cfg.dryrun, **wandb_metrics)
+
+        # save static data to single json
+        # todo this current will override for each run in the experiment
+        # static_info = self.get_static_info()
+        # train_ids = self.train_loader.dataset.user_ids
+        # val_ids = self.valid_loader.dataset.user_ids
+        # static_info["train_ids"] = train_ids
+        # static_info["test_ids"] = val_ids
+        # utils.save_static_info(static_info, csv_path)
 
     def _init_distributed(self, model):
         model = torch.nn.parallel.DistributedDataParallel(

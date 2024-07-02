@@ -105,14 +105,9 @@ def main_pretrain(cfg, setup=None) -> Dict:
     section_timer = time.time()
     eval_metrics, train_metrics = model_interface.train()
     metrics.update(eval_metrics)
-    # train_metrics = model_interface.train_HF(dataloaders["train"])
     model_path = model_interface.save_model("final")
-    metrics["save_path"] = model_path
-
-    metrics["consolidated"] = cfg.consolidate
-    metrics["mask"] = cfg.model.percent_mask_all_labels_in_input > 0 or cfg.model.percent_mask_labels_in_input > 0
-    metrics["randomize"] = cfg.model.randomize_order
-
+    static_info = model_interface.get_static_info()
+    metrics.update(static_info)
     log.info(f"Saving to {model_path}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")

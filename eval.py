@@ -47,8 +47,8 @@ def main_eval(cfg, setup=None) -> Dict:
     log.info(f"------------- PROCESS TOKENIZED DATASET -------------")
     section_timer = time.time()
     tokenized_data = data_preparation.split_data_by_column(tokenized_data, "User")
-
-    test_user_list = data_preparation.load_train_test_split(os.path.join(get_original_cwd(), cfg.model_dir, cfg.model_save_name))["test"]
+    static_info = data_preparation.load_static_info(os.path.join(get_original_cwd(), cfg.model_dir, cfg.model_save_name))
+    test_user_list = static_info["test_ids"]
 
     if cfg.dryrun:
         test_user_list = tokenized_data.keys()
@@ -96,6 +96,11 @@ def main_eval(cfg, setup=None) -> Dict:
     section_timer = time.time()
     eval_metrics = model_interface.test()
     metrics.update(eval_metrics)
+    for k, v in static_info.items():
+        metrics[f"train_{k}"] = v
+    for k, v in model_interface.get_static_info().items():
+        metrics[f"eval_{k}"] = v
+
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")
     log.info(f"------------- EVAL COMPLETE -------------")
