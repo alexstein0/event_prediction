@@ -97,7 +97,8 @@ def main_eval(cfg, setup=None) -> Dict:
     eval_metrics = model_interface.test()
     metrics.update(eval_metrics)
     for k, v in static_info.items():
-        metrics[f"train_{k}"] = v
+        if k not in ["train_ids", "test_ids"]:
+            metrics[f"train_{k}"] = v
     for k, v in model_interface.get_static_info().items():
         metrics[f"eval_{k}"] = v
 

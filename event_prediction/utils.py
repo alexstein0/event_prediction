@@ -386,11 +386,11 @@ def dump_metrics(cfg, metrics):
         except ValueError:
             sanitized_metrics[metric] = np.asarray(val).tolist()
         if isinstance(val, int):
-            log.info(f"{metric:20s} {val:6d}")
+            log.info(f"{metric:30s} {val:6d}")
         elif isinstance(val, float):
-            log.info(f"{metric:20s} {val:6.4f}")
+            log.info(f"{metric:30s} {val:6.4f}")
         else:
-            log.info(f"{metric:20s} {val}")
+            log.info(f"{metric:30s} {val}")
 
     with open(f"{filepath}.yaml", "w") as yaml_file:
         yaml.dump(sanitized_metrics, yaml_file, default_flow_style=False)

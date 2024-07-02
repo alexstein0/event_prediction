@@ -646,8 +646,9 @@ class ModelTrainerInterface:
 
         # save static data
         # todo dont need to repeat it each time
-        # static_info = self.get_static_info()
-        # wandb_metrics.update(static_info)
+        if not is_training:
+            static_info = self.get_static_info()
+            wandb_metrics.update(static_info)
 
         if self.cfg.experiment_folder_name is None:
             csv_path = os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
