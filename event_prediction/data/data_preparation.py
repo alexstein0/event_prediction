@@ -262,8 +262,12 @@ def create_train_test_split(dataset: datasets.Dataset | DatasetDict, test_split:
 
 
 def load_static_info(path: str) -> Dict[str, Any]:
-    with open(os.path.join(path, "static_info.json"), 'r') as f:
-        split = json.load(f)
+    try:
+        with open(os.path.join(path, "static_info.json"), 'r') as f:
+            split = json.load(f)
+    except FileNotFoundError:
+        with open(os.path.join(path, "train_test_split.json"), 'r') as f:
+            split = json.load(f)
     return split
 
 

@@ -48,7 +48,10 @@ def main_eval(cfg, setup=None) -> Dict:
     section_timer = time.time()
     tokenized_data = data_preparation.split_data_by_column(tokenized_data, "User")
     static_info = data_preparation.load_static_info(os.path.join(get_original_cwd(), cfg.model_dir, cfg.model_save_name))
-    test_user_list = static_info["test_ids"]
+    try:
+        test_user_list = static_info["test_ids"]
+    except:
+        test_user_list = static_info["test"]
 
     if cfg.dryrun:
         test_user_list = tokenized_data.keys()
