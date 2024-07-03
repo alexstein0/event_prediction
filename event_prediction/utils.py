@@ -345,6 +345,20 @@ def save_to_table(out_dir, table_name, dryrun, **kwargs):
 
     # Write the updated DataFrame back to a CSV file
     updated_df.to_csv(fname, index=False)
+    save_to_json(out_dir, table_name, dryrun, **kwargs)
+
+
+def save_to_json(out_dir, table_name, dryrun, **kwargs):
+    """Save keys to .csv files."""
+    # Check for file
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+    fname = os.path.join(out_dir, f"table-{table_name}.json")
+    # Read or write header
+    log.info(f"Saving to table: {fname}")
+    with open(fname, 'a') as file:
+        json.dump(kwargs, file)
+        file.write('\n')
 
 
 def save_static_info(static_info: Dict, path: str):

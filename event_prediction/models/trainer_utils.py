@@ -170,7 +170,7 @@ class ModelTrainerInterface:
         # self.best_loss = float("inf")
         self.cfg = cfg
         self.static_info = {}
-        self.static_info["tags"] = self.cfg.wandb.tags
+        self.static_info["tags"] = list(self.cfg.wandb.tags)
         self.static_info["name"] = self.cfg.name
         self.static_info["saved_name"] = self.model_save_name
         self.static_info["data_name"] = self.cfg.data.name
