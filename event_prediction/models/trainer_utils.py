@@ -39,6 +39,7 @@ class ModelTrainerInterface:
         tokenizer: AutoTokenizer,
         data_loaders: Dict[str, DataLoader],
         train_eval: bool = True,
+        prev_static_info: Dict = None,
         setup=None
     ):
 
@@ -114,11 +115,13 @@ class ModelTrainerInterface:
             checkpoint = self.get_checkpoint(path)
             self.model = self.load_model_checkpoint(model, checkpoint)
             # self.model = checkpoint
-            log.info(f"Checkpoint loaded from: {path}")
+            self.prev_static_info = prev_static_info
+            log.info(f"Checkpoint loaded from: {path} {f'with static data' if prev_static_info is not None else ''}")
         else:
             # not loaded from checkpoint
             log.info(f"No checkpoint loaded")
             self.model = model
+            self.prev_static_info = {}
 
         self.model.to(device)
 
@@ -166,6 +169,20 @@ class ModelTrainerInterface:
         self.best_auc = 0
         # self.best_loss = float("inf")
         self.cfg = cfg
+        self.static_info = {}
+        self.static_info["tags"] = self.cfg.wandb.tags
+        self.static_info["name"] = self.cfg.name
+        self.static_info["saved_name"] = self.model_save_name
+        self.static_info["data_name"] = self.cfg.data.name
+        self.static_info["lr"] = self.cfg.model.lr
+        self.static_info["batch_size"] = self.cfg.model.batch_size
+        self.static_info["seq_length"] = self.cfg.model.seq_length
+        self.static_info["seed"] = self.cfg.seed
+        self.static_info["randomize_order"] = self.cfg.model.randomize_order
+        self.static_info["mask_all_pct"] = self.cfg.model.percent_mask_all_labels_in_input
+        self.static_info["mask_each_pct"] = self.cfg.model.percent_mask_labels_in_input
+        self.static_info["experiment_folder_name"] = self.cfg.experiment_folder_name
+        self.prev_static_info = {f'train_{k}': v for k, v in self.prev_static_info.items() if k in self.static_info}
 
     def train(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info(f"Running training for {self.epochs} epochs")
@@ -348,20 +365,7 @@ class ModelTrainerInterface:
         return os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
 
     def get_static_info(self):
-        static_info = {}
-        static_info["tags"] = self.cfg.wandb.tags
-        static_info["name"] = self.cfg.name
-        static_info["saved_name"] = self.model_save_name
-        static_info["data_name"] = self.cfg.data.name
-        static_info["lr"] = self.cfg.model.lr
-        static_info["batch_size"] = self.cfg.model.batch_size
-        static_info["seq_length"] = self.cfg.model.seq_length
-        static_info["seed"] = self.cfg.seed
-        static_info["randomize_order"] = self.cfg.model.randomize_order
-        static_info["mask_all_pct"] = self.cfg.model.percent_mask_all_labels_in_input
-        static_info["mask_each_pct"] = self.cfg.model.percent_mask_labels_in_input
-        static_info["experiment_folder_name"] = self.cfg.experiment_folder_name
-        return static_info
+        return self.static_info
 
     def get_checkpoint(self, ckpt_path):
         try:
@@ -646,16 +650,22 @@ class ModelTrainerInterface:
 
         # save static data
         # todo dont need to repeat it each time
-        if not is_training:
-            static_info = self.get_static_info()
-            wandb_metrics.update(static_info)
+        # if not is_training:
+        static_info = self.get_static_info()
+        wandb_metrics.update(static_info)
+
+        if self.prev_static_info is not None:
+            wandb_metrics.update(self.prev_static_info)
 
         if self.cfg.experiment_folder_name is None:
-            csv_path = os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
+            csv_path = self.get_model_path()
             table_name = f"{prefix}stats"
         else:
             csv_path = os.path.join(get_original_cwd(), self.cfg.base_dir, self.cfg.experiment_folder_name)
-            table_name = f"{self.model_save_name}-{prefix}stats"
+            if "train_saved_name" in wandb_metrics:  # model save name is there so no need to redo
+                table_name = f"{prefix}stats"
+            else:
+                table_name = f"{self.model_save_name}-{prefix}stats"
         utils.save_to_table(csv_path, table_name, self.cfg.dryrun, **wandb_metrics)
 
         # save static data to single json

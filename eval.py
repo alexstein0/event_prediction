@@ -47,11 +47,9 @@ def main_eval(cfg, setup=None) -> Dict:
     log.info(f"------------- PROCESS TOKENIZED DATASET -------------")
     section_timer = time.time()
     tokenized_data = data_preparation.split_data_by_column(tokenized_data, "User")
-    static_info = data_preparation.load_static_info(os.path.join(get_original_cwd(), cfg.model_dir, cfg.model_save_name))
-    try:
-        test_user_list = static_info["test_ids"]
-    except:
-        test_user_list = static_info["test"]
+    prev_static_info = data_preparation.load_static_info(os.path.join(get_original_cwd(), cfg.model_dir), cfg.model_save_name)
+
+    test_user_list = prev_static_info["test_ids"]
 
     if cfg.dryrun:
         test_user_list = tokenized_data.keys()
@@ -77,7 +75,7 @@ def main_eval(cfg, setup=None) -> Dict:
     classification = True
     if classification:
         # todo add collator
-        model_interface = ModelTrainerInterface(cfg, tokenizer, dataloaders, train_eval=False)
+        model_interface = ModelTrainerInterface(cfg, tokenizer, dataloaders, prev_static_info=prev_static_info, train_eval=False)
 
     else:
         # todo this doesnt work
@@ -98,10 +96,10 @@ def main_eval(cfg, setup=None) -> Dict:
     log.info(f"------------- BEGIN EVAL -------------")
     section_timer = time.time()
     eval_metrics = model_interface.test()
+
     metrics.update(eval_metrics)
-    for k, v in static_info.items():
-        if k not in ["train_ids", "test_ids"]:
-            metrics[f"train_{k}"] = v
+    for k, v in model_interface.prev_static_info.items():
+        metrics[f"{k}"] = v
     for k, v in model_interface.get_static_info().items():
         metrics[f"eval_{k}"] = v
 

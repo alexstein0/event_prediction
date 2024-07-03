@@ -261,14 +261,33 @@ def create_train_test_split(dataset: datasets.Dataset | DatasetDict, test_split:
     return dataset
 
 
-def load_static_info(path: str) -> Dict[str, Any]:
+def load_static_info(path: str, model_save_name: str) -> Dict[str, Any]:
     try:
-        with open(os.path.join(path, "static_info.json"), 'r') as f:
-            split = json.load(f)
+        with open(os.path.join(path, model_save_name, "static_info.json"), 'r') as f:
+            static_info = json.load(f)
     except FileNotFoundError:
-        with open(os.path.join(path, "train_test_split.json"), 'r') as f:
-            split = json.load(f)
-    return split
+        with open(os.path.join(path, model_save_name, "train_test_split.json"), 'r') as f:
+            static_info = json.load(f)
+
+        # todo this shouldnt be here, its a hack for backwards compatibility:
+        static_info["test_ids"] = static_info["test"]
+        static_info["train_ids"] = static_info["train"]
+        del static_info['test']
+        del static_info['train']
+        static_info["saved_name"] = static_info.get("saved_name", model_save_name)
+        # static_info["data_name"] = static_info.get("data_name", cfg.data.name)
+        static_info["randomize_order"] = static_info.get("randomize_order", "randomize" in model_save_name)
+        if "always" in model_save_name:
+            static_info["mask_all_pct"] = static_info.get("mask_all_pct", 1.0)
+            static_info["mask_each_pct"] = static_info.get("mask_each_pct", .0)
+        elif "sometimes" in model_save_name:
+            static_info["mask_all_pct"] = static_info.get("mask_all_pct", .25)
+            static_info["mask_each_pct"] = static_info.get("mask_each_pct", .25)
+        else:
+            static_info["mask_all_pct"] = static_info.get("mask_all_pct", 0.0)
+            static_info["mask_each_pct"] = static_info.get("mask_each_pct", 0.0)
+        # todo ends here
+    return static_info
 
 
 def create_train_test_split_by_column(data: Dataset, test_split: float, split_by_column: str):
