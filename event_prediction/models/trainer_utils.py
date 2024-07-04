@@ -365,7 +365,7 @@ class ModelTrainerInterface:
         return os.path.join(get_original_cwd(), self.cfg.model_dir, self.model_save_name)
 
     def get_static_info(self):
-        return self.static_info
+        return self.static_info.copy()
 
     def get_checkpoint(self, ckpt_path):
         try:
