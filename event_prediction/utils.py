@@ -353,7 +353,7 @@ def save_to_json(out_dir, table_name, dryrun, **kwargs):
     # Check for file
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
-    fname = os.path.join(out_dir, f"table-{table_name}.json")
+    fname = os.path.join(out_dir, f"json-{table_name}.json")
     # Read or write header
     log.info(f"Saving to table: {fname}")
     with open(fname, 'a') as file:
