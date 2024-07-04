@@ -181,6 +181,7 @@ class ModelTrainerInterface:
         self.static_info["randomize_order"] = self.cfg.model.randomize_order
         self.static_info["mask_all_pct"] = self.cfg.model.percent_mask_all_labels_in_input
         self.static_info["mask_each_pct"] = self.cfg.model.percent_mask_labels_in_input
+        self.static_info["consolidated"] = len(self.consolidation_map) > 0
         self.static_info["experiment_folder_name"] = self.cfg.experiment_folder_name
         self.prev_static_info = {f'train_{k}': v for k, v in self.prev_static_info.items() if k in self.static_info}
 
