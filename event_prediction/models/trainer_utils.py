@@ -433,7 +433,7 @@ class ModelTrainerInterface:
         if f"target_probs{suffix}" in stats:
             target_probs = torch.cat(stats[f"target_probs{suffix}"], dim=1)
 
-        # Calculate matrics
+        # Calculate metrics
         try:
             auc = multiclass_auroc(target_probs.T, target_inds, num_classes=target_probs.shape[0], thresholds=None)
             output_stats[f"auc{suffix}"] = auc.item()
