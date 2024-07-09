@@ -85,7 +85,7 @@ class ModelTrainerInterface:
 
         # todo is there a cleaner way of doing these?
         cfg.model.context_length = self.model_context_length
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         if cfg.model_save_name is not None:
             self.model_save_name = cfg.model_save_name
         else:
