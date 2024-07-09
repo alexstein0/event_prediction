@@ -19,9 +19,9 @@ save_csv: True
 
 hydra:
   sweep:
-    dir: ${base_dir}/${name}/seed-${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${base_dir}/${name}/seed-${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S-%f}
   run:
-    dir: ${base_dir}/${name}/seed-${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${base_dir}/${name}/seed-${seed}/${now:%Y-%m-%d}/${now:%H-%M-%S-%f}
   job:
     chdir: True
 
