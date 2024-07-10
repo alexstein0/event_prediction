@@ -4,7 +4,7 @@ import hydra
 from hydra.utils import get_original_cwd
 import torch
 import event_prediction
-from event_prediction import utils, data_preparation, ModelTrainerInterface
+from event_prediction import utils, data_preparation, ModelTrainerInterface, get_data_processor
 import os
 from typing import Dict
 import time
@@ -60,6 +60,8 @@ def main_eval(cfg, setup=None) -> Dict:
 
     log.info(f"Num val users: {len(test_user_list)}, Num val loader batches: {len(val_loader)}")
     log.info(f"Number of Columns: {val_loader.dataset.num_columns}")
+    log.info(f"Columns: {get_data_processor(cfg.data).get_data_cols()}")
+    log.info(f"Ordered: {'true' if not cfg.model.randomize_order else 'random'}")
     sample_size = val_loader.dataset.data.shape[1]
     log.info(f"Sequence length (rows): {cfg.model.seq_length}")
     log.info(f"Elements per sample (columns * sequence length): {sample_size}")
@@ -90,6 +92,10 @@ def main_eval(cfg, setup=None) -> Dict:
     log.info(f"Model Name: {model.name_or_path}")
     log.info(f"Model size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
+    label_col = model_interface.loc_to_col.get(model_interface.label_col_position)
+    if label_col is None:
+        label_col = model_interface.loc_to_col[max(model_interface.loc_to_col.keys())]
+    log.info(f"Label Column is: {label_col}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")
     log.info(f"------------- LOADING COMPLETE -------------")

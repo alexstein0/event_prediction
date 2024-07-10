@@ -23,3 +23,5 @@ raw_type: csv
 raw_index_columns: ${data.index_columns}
 
 consolidate_columns:
+
+label_position: -1

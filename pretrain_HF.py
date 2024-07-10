@@ -1,6 +1,6 @@
 import hydra
 import event_prediction
-from event_prediction import utils, data_preparation, ModelTrainerInterface
+from event_prediction import utils, data_preparation, ModelTrainerInterface, get_data_processor
 import logging
 from typing import Dict
 import os
@@ -42,6 +42,7 @@ def main_pretrain(cfg, setup=None) -> Dict:
     # PROCESS DATA
     log.info(f"------------- PROCESS TOKENIZED DATASET -------------")
     section_timer = time.time()
+    get_data_processor(cfg.data)
     tokenized_data = data_preparation.split_data_by_column(tokenized_data, "User")
     tokenized_data = data_preparation.create_train_test_split(tokenized_data, cfg.model.train_test_split)
     dataloaders = data_preparation.prepare_dataloaders(tokenized_data, tokenizer, cfg)
@@ -56,6 +57,8 @@ def main_pretrain(cfg, setup=None) -> Dict:
     log.info(f"Num train users: {len(set(train_users))}, Num train loader batches: {len(train_loader)}")
     log.info(f"Num val users: {len(set(val_users))}, Num val loader batches: {len(val_loader)}")
     log.info(f"Number of Columns: {train_loader.dataset.num_columns}")
+    log.info(f"Columns: {get_data_processor(cfg.data).get_data_cols()}")
+    log.info(f"Ordered: {'true' if not cfg.model.randomize_order else 'random'}")
     sample_size = train_loader.dataset.data.shape[1]
     log.info(f"Sequence length (rows): {cfg.model.seq_length}")
     log.info(f"Elements per sample (columns * sequence length): {sample_size}")
@@ -98,6 +101,10 @@ def main_pretrain(cfg, setup=None) -> Dict:
         log.info(f"Model Name: {model.name_or_path}")
     log.info(f"Model size: {model_size/1000**2:.1f}M parameters")
     log.info(f"Vocab size: {vocab_size}")
+    label_col = model_interface.loc_to_col.get(model_interface.label_col_position)
+    if label_col is None:
+        label_col = model_interface.loc_to_col[max(model_interface.loc_to_col.keys())]
+    log.info(f"Label Column is: {label_col}")
     elapsed_times = utils.get_time_deltas(section_timer, initial_time)
     log.info(f"Total time: {elapsed_times[0]} ({elapsed_times[1]}  overall)")
     log.info(f"------------- LOADING COMPLETE -------------")

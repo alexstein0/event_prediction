@@ -50,15 +50,25 @@ class ModelTrainerInterface:
         self.label_ids = classification_info["label_ids"]
         self.tokenizer = tokenizer
 
-        _, self.col_to_loc = data_preparation.get_col_to_id_dict(data_processor.get_data_cols(), dataset=None)
+        _, self.col_to_loc, self.loc_to_col = data_preparation.get_col_to_id_dict(data_processor.get_data_cols(), dataset=None)
         consolidation_map = cfg.data.consolidate_columns
         self.consolidation_map = {}
+        # if consolidation_map is not None and cfg.consolidate:
+        #     assert len(consolidation_map) == 1, "only works for target now"
+        #     for col_name, col_mapping in consolidation_map.items():
+        #         assert len(col_mapping) == len(self.label_ids), "consolidation maps must have the same number of columns"
+        #         for label_value, label_id in col_mapping.items():
+        #             self.consolidation_map[self.label_ids[label_value]] = label_id
+
         if consolidation_map is not None and cfg.consolidate:
-            assert len(consolidation_map) == 1, "only works for target now"
             for col_name, col_mapping in consolidation_map.items():
-                assert len(col_mapping) == len(self.label_ids), "consolidation maps must have the same number of columns"
+                col_label_map = self.label_ids[str(self.col_to_loc[col_name])]
+                # todo only works if label_ids correspond to position in the table
+                assert len(col_mapping) == len(col_label_map), "consolidation maps must have the same number of columns"
+                temp_map = {}
                 for label_value, label_id in col_mapping.items():
-                    self.consolidation_map[self.label_ids[label_value]] = label_id
+                    temp_map[col_label_map[label_value]] = label_id
+                self.consolidation_map[self.col_to_loc[col_name]] = temp_map
 
         # DATA
         self.train_loader = data_loaders.get("train", None)
@@ -68,6 +78,12 @@ class ModelTrainerInterface:
         self.valid_loader = data_loaders.get("test", None)
         if self.valid_loader is None:
             log.info("No test data loaded!")
+
+        try:
+            self.label_col_position = self.valid_loader.dataset.label_col_position
+        except:
+            log.info("No label column position provided!")
+            self.label_col_position = self.num_cols - 1
 
         self.epochs = cfg.model.epochs
         self.model_context_length = self.num_cols*cfg.model.seq_length
@@ -178,6 +194,7 @@ class ModelTrainerInterface:
         self.static_info["batch_size"] = self.cfg.model.batch_size
         self.static_info["seq_length"] = self.cfg.model.seq_length
         self.static_info["seed"] = self.cfg.seed
+        self.static_info["label_column"] = self.loc_to_col.get(self.label_col_position)
         self.static_info["randomize_order"] = self.cfg.model.randomize_order
         self.static_info["mask_all_pct"] = self.cfg.model.percent_mask_all_labels_in_input
         self.static_info["mask_each_pct"] = self.cfg.model.percent_mask_labels_in_input
@@ -343,7 +360,7 @@ class ModelTrainerInterface:
     def validation_loop(self, idx, batch):
         device_batch = self.to_device(batch, keys=["input_ids", "mask", "labels"])
         outputs = self.forward_inference(device_batch)
-        metrics = self.calc_metrics_for_batch(device_batch, outputs)
+        metrics = self.calc_metrics_for_batch(device_batch, outputs, is_eval=True)
         return metrics
 
     def save_model(self, name: str):
@@ -417,6 +434,16 @@ class ModelTrainerInterface:
         if "loss" in stats:
             output_stats["loss"] = sum(stats["loss"]) / count
 
+        acc_overall = []
+        for loc, col_nam in self.loc_to_col.items():
+            if f"accuracy_{col_nam}" in stats:
+                acc = sum([i * (j/rows) for i, j in zip(stats[f"accuracy_{col_nam}"], stats[f"rows"])])
+                output_stats[f"accuracy_{col_nam}"] = acc
+                acc_overall.append(acc)
+
+        if len(acc_overall) > 0:
+            output_stats['accuracy_overall'] = sum(acc_overall) / len(acc_overall)
+
         for suffix in self.suffix_options:
             output_stats = self.get_eval_metrics(stats, output_stats, suffix)
 
@@ -446,33 +473,36 @@ class ModelTrainerInterface:
             pass
         return output_stats
 
-    def calc_metrics_for_batch(self, device_batch: Dict[str, Any], model_outputs: Dict[str, Any]) -> Dict[str, Any]:
+    def calc_metrics_for_batch(self, device_batch: Dict[str, Any], model_outputs: Dict[str, Any], is_eval: bool = False) -> Dict[str, Any]:
         metrics = {}
         if "loss" in model_outputs:
             loss = model_outputs["loss"]
             metrics["loss"] = loss.clone().detach().to("cpu")
-        logits = model_outputs["logits"]
-        metrics["rows"] = device_batch["mask"].sum()
 
-        # Convert logits over all vocabulary to target probability for use in accuracy
-        label_mask = device_batch["mask"][:, 1:]  # mask of where the labels are
-        mask_flattened_shifted = label_mask.reshape(-1)
+        metrics["rows"] = (device_batch["mask"] == self.label_col_position).sum()   # might be wrong, goes based on only one 0 per row
 
-        # where should metrics be calculated (like auc only on row labels)
-        last_label_mask = torch.zeros_like(label_mask, device=label_mask.device)
-        last_label_mask[torch.arange(label_mask.size(0)), torch.argmax((label_mask == 1).long().cumsum(dim=1) * label_mask, dim=1)] = 1
-        mask_flattened_last_shifted = last_label_mask.reshape(-1)
-
-        # todo bos eos
-        shifted_outputs = logits[..., :-1, :].contiguous()
-        logits_flattened = shifted_outputs.view(-1, shifted_outputs.shape[-1])
-        shifted_labels = device_batch["labels"].contiguous()
-        labels_flattened = shifted_labels.view(-1)
+        mask_col = device_batch["mask"][:, 1:] == self.label_col_position
+        mask_flattened_shifted, mask_flattened_last_shifted, labels_flattened, logits_flattened = self.shape_mask_labels_logits(mask_col, device_batch["labels"], model_outputs["logits"])
+        #
+        # # Convert logits over all vocabulary to target probability for use in accuracy
+        # label_mask = device_batch["mask"][:, 1:] == self.label_col_position  # mask of where the labels are
+        # mask_flattened_shifted = label_mask.reshape(-1)
+        #
+        # # where should metrics be calculated (like auc only on row labels)
+        # last_label_mask = torch.zeros_like(label_mask, device=label_mask.device)
+        # last_label_mask[torch.arange(label_mask.size(0)), torch.argmax((label_mask == 1).long().cumsum(dim=1) * label_mask, dim=1)] = 1
+        # mask_flattened_last_shifted = last_label_mask.reshape(-1)
+        #
+        # # todo bos eos
+        # shifted_outputs = logits[..., :-1, :].contiguous()
+        # logits_flattened = shifted_outputs.view(-1, shifted_outputs.shape[-1])
+        # shifted_labels = device_batch["labels"].contiguous()
+        # labels_flattened = shifted_labels.view(-1)
 
         # track AUC stuff
         for suffix in self.suffix_options:
             consolidate = "consolidate" in suffix
-            if consolidate and len(self.consolidation_map) < 2:
+            if consolidate and len(self.consolidation_map.get(self.label_col_position, [])) < 2:
                 continue
             mask = mask_flattened_last_shifted if "last" in suffix else mask_flattened_shifted
 
@@ -483,29 +513,72 @@ class ModelTrainerInterface:
             accuracy = (preds == target_inds).float().mean()
             metrics[f"accuracy{suffix}"] = accuracy.detach().to("cpu")
 
+        if is_eval:
+            # this is a specific bit of functionality to check accuracy on entire sequence
+            for col_num, mapping in self.label_ids.items():
+                col_num = int(col_num)
+                mask_col = device_batch["mask"][:, 1:] == col_num  # mask of where the labels are
+                col_mask_flattened_shifted, _, col_labels_flattened, col_logits_flattened \
+                    = self.shape_mask_labels_logits(mask_col, device_batch["labels"], model_outputs["logits"])
+
+                consolidate = len(self.consolidation_map.get(col_num, {})) > 1
+                col_target_probs, col_target_inds = self.get_logits_and_probs(col_logits_flattened, col_labels_flattened, col_mask_flattened_shifted, column_number=col_num, consolidate=consolidate)
+                col_preds = torch.argmax(col_target_probs, dim=0)  # (b*n/tokens_per_trans)
+                col_accuracy = (col_preds == col_target_inds).float().mean()
+                # metrics["overall correct"] = metrics.get("overall correct", 0) + sum(preds == target_inds)
+                # metrics["overall total"] = metrics.get("overall total", 0) + len(preds)
+                # metrics["accuracy_overall"] = metrics.get("accuracy_overall", 0) + (accuracy / len(self.label_ids))
+                col_name = self.loc_to_col[col_num]
+                metrics[f"accuracy_{col_name}"] = metrics.get(f"accuracy_{col_name}", 0) + col_accuracy
+
         return metrics
+
+    def shape_mask_labels_logits(self, label_mask, labels, logits):
+        mask_flattened_shifted = label_mask.reshape(-1)
+
+        # where should metrics be calculated (like auc only on row labels)
+        last_label_mask = torch.zeros_like(label_mask, device=label_mask.device)
+        last_label_mask[
+            torch.arange(label_mask.size(0)), torch.argmax((label_mask == 1).long().cumsum(dim=1) * label_mask,
+                                                           dim=1)] = 1
+        mask_flattened_last_shifted = last_label_mask.reshape(-1)
+
+        # todo bos eos
+        shifted_outputs = logits[..., :-1, :].contiguous()
+        logits_flattened = shifted_outputs.view(-1, shifted_outputs.shape[-1])
+        shifted_labels = labels.contiguous()
+        labels_flattened = shifted_labels.view(-1)
+        return mask_flattened_shifted, mask_flattened_last_shifted, labels_flattened, logits_flattened
 
     def get_logits_and_probs(self, logits_flattened: torch.Tensor,
                              labels_flattened: torch.Tensor,
                              mask_flattened_shifted: torch.Tensor,
+                             column_number: int = -1,
                              consolidate: bool = True
                              ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        if column_number < 0:
+            column_number = self.label_col_position
+
         selected_logits = logits_flattened[mask_flattened_shifted == 1, :]
         selected_targets = labels_flattened[mask_flattened_shifted == 1]
 
         target_logits = []
         target_inds = torch.zeros_like(selected_targets) - 1
         consolidation_map = []
-        for i, (word, word_id) in enumerate(self.label_ids.items()):
+
+        label_dict = self.label_ids[str(column_number)]
+        for i, (word, word_id) in enumerate(label_dict.items()):
             target_logits.append(selected_logits[:, word_id])
             target_inds[selected_targets == word_id] = i
-            consolidation_map.append(self.consolidation_map.get(word_id, -1))
+            consolidation_map.append(self.consolidation_map.get(column_number, {}).get(word_id, -1))
         target_logits = torch.stack(target_logits)
         consolidation_map = torch.tensor(consolidation_map).to(target_inds.device)
         target_probs = F.softmax(target_logits, dim=0)
 
-        if len(self.consolidation_map) > 1 and consolidate:
+        if len(self.consolidation_map.get(column_number, {})) > 1 and consolidate:
             target_probs, target_inds = self.consolidate_column_values(consolidation_map, target_probs, target_inds)
+
         # assert (target_inds >= 0).all(), "all possible logits found"
         assert target_probs.sum(dim=0).allclose(torch.tensor(1.0)), "all probs add to 1"
         return target_probs, target_inds
@@ -542,7 +615,7 @@ class ModelTrainerInterface:
     def forward(self, batch, **kwargs):
         input_ids = batch["input_ids"].clone()
         labels = batch["labels"].clone()
-        mask = batch["mask"].clone()
+        mask = (batch["mask"].clone() == self.label_col_position).long()
         model_outputs = self.model(input_ids=input_ids, target_mask=mask, labels=labels)
         return model_outputs
 
@@ -550,7 +623,7 @@ class ModelTrainerInterface:
     @torch._dynamo.disable()
     def forward_inference(self, batch, **kwargs):
         input_ids = batch["input_ids"].clone()
-        mask = batch["mask"].clone()
+        mask = (batch["mask"].clone() == self.label_col_position).long()
         model_outputs = self.model(input_ids=input_ids, target_mask=mask)
         return model_outputs
 
@@ -568,6 +641,10 @@ class ModelTrainerInterface:
         kw_str.append(f'''{f"Epoch dur: {utils.format_time(metrics['epoch_time'], 2)}":20s} ''' if 'epoch_time' in metrics else "")
         kw_str.append(f'''{f"avg/step: {utils.format_time(metrics['step_avg_time'], 2)}":20s} ''' if 'step_avg_time' in metrics else "")
         kw_str.append(f'''{f"loss: {metrics['loss']:7.4f}":12s} ''' if 'loss' in metrics else "")
+
+        kw_str.append(f'''{f"acc_overall: {metrics[f'accuracy_overall']:4.2%}":12s} ''' if f'accuracy_overall' in metrics else "")
+        for loc, col_nam in self.loc_to_col.items():
+            kw_str.append(f'''{f"acc_{col_nam}: {metrics[f'accuracy_{col_nam}']:4.2%}":12s} ''' if f'accuracy_{col_nam}' in metrics else "")
 
         # eval metrics
         for suffix in self.suffix_options:

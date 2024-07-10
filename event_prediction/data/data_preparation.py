@@ -149,7 +149,7 @@ def get_dataset_and_collator(tokenized_dataset: Dataset, tokenizer, cfg: DictCon
                                                        eos_id=tokenizer.eos_token_id,
                                                        randomize_order=cfg.model.randomize_order,
                                                        fixed_cols=cfg.model.fixed_cols,
-                                                       label_position=cfg.model.label_position
+                                                       label_position=cfg.data.label_position
                                                        )
         collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
 
@@ -186,20 +186,22 @@ def preprocess_dataset(dataset: pd.DataFrame, data_processor, numeric_bucket_amo
     all_cols = data_processor.get_data_cols()
     # all_cols.append(row_key)
     # todo right now the order of the columns must be the same at tokenization train/test
-    dataset, col_to_id_dict = get_col_to_id_dict(all_cols, dataset)
+    dataset, col_to_id_dict, _ = get_col_to_id_dict(all_cols, dataset)
     return dataset, col_to_id_dict
 
 
 def get_col_to_id_dict(all_cols: List[str], dataset: pd.DataFrame = None):
     col_id = 0
     col_to_id_dict = {}
+    id_to_col_dict = {}
     for col in all_cols:
         col_to_id_dict[col] = col_id
+        id_to_col_dict[col_id] = col
         if dataset is not None:
             dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
         col_id += 1
 
-    return dataset, col_to_id_dict
+    return dataset, col_to_id_dict, id_to_col_dict
 
 
 def convert_to_huggingface(dataset: pd.DataFrame, data_processor) -> datasets.Dataset:
@@ -401,7 +403,7 @@ class TabularDataset(data.Dataset):
                  fixed_cols: int = 1,
                  bos_id: int = 0,
                  eos_id: int = 0,
-                 label_position: int=-1
+                 label_position: int = -1
                  ):
         assert pad_id is not None
         self.pad_id = pad_id
@@ -438,14 +440,16 @@ class TabularDataset(data.Dataset):
             index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
 
             user_rows = user_rows.gather(1, index)
-            last_col_mask = torch.zeros_like(user_rows)
-            last_col_mask[index == self.label_col_position] = 1  # second to last column is where we will do the mask
+            # last_col_mask = torch.zeros_like(user_rows)
+            # last_col_mask[index == self.label_col_position] = 1  # second to last column is where we will do the mask
+
+            last_col_mask = torch.arange(self.num_columns).repeat(num_rows, 1)
 
             if num_rows % self.seq_length != 0:
                 num_pad_rows = self.seq_length - (num_rows % self.seq_length)
                 pad_rows = torch.tensor(pad_row).repeat([num_pad_rows, 1])
                 user_rows = torch.cat([user_rows, pad_rows])
-                last_col_mask = torch.cat([last_col_mask, torch.zeros_like(pad_rows)])
+                last_col_mask = torch.cat([last_col_mask, torch.zeros_like(pad_rows) - 1])
             assert len(user_rows) % self.seq_length == 0
             # if num_rows_for_user < self.seq_length:  # not enough transactions for the user to fill up the seq_len window
             #     continue
@@ -489,7 +493,7 @@ class NextTokenPredictionDataset(TabularDataset):
             mask = mask[index]
 
         x_out = torch.zeros(x.size(0)+2).long()
-        mask_out = torch.zeros(x.size(0)+2).long()
+        mask_out = torch.zeros(x.size(0)+2).long() - 1
         x_out[0] = self.bos_id
         x_out[-1] = self.eos_id
         x_out[1:-1] = x
@@ -498,47 +502,48 @@ class NextTokenPredictionDataset(TabularDataset):
         return {"input_ids": x_out, "mask": mask_out}
 
 
-class SequenceClassifierDataset(TabularDataset):
-    def __init__(self,
-                 label_type: str = 'last',  # or 'any'
-                 target_label_id: int = -1,
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.label_type = label_type
-        self.target_label_id = target_label_id
-
-    def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
-        # The corresponding label for each example is a chunk of tokens of the same size,
-        # but shifted one token to the right.
-
-        # TODO: It is a arbitrary design choice whether to do the shift of the labels here
-        # todo split by user?
-        # or in the loss function. Huggingface's DataCollator is designed to let the loss
-        # function do the shifting, so we need to change this if we want to be compatible with that.
-        # start = i * self.seq_length
-        # x = self.data[start: start + self.seq_length]
-        # y = self.data[start + 1: start + self.seq_length + 1]
-        # mask = self.label_mask[start: start + self.seq_length]
-        # return {"input_ids": x, "targets": y, "mask": mask}
-        x = self.data[i, :]
-        mask = self.label_mask[i, :]
-        if self.randomize_order:
-            index = torch.arange(x.shape[0])
-            for s in range(self.seq_length):
-                start = self.num_columns * s
-                index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
-            x = x[index]
-            mask = mask[index]
-
-        inds = (mask == 1).nonzero().flatten()
-        if self.label_type == "any" and self.target_label_id >= 0:
-            # todo this doesnt work
-            y = x[inds] == self.target_label_id
-        elif self.label_type == "last":
-            y = inds[-1]
-        else:  # self.loss_calc_mode == "labels:
-            raise
-        return {"input_ids": x, "labels": y}
+# class SequenceClassifierDataset(TabularDataset):
+#     # todo doesnt work
+#     def __init__(self,
+#                  label_type: str = 'last',  # or 'any'
+#                  target_label_id: int = -1,
+#                  **kwargs):
+#         super().__init__(**kwargs)
+#         self.label_type = label_type
+#         self.target_label_id = target_label_id
+#
+#     def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
+#         # The corresponding label for each example is a chunk of tokens of the same size,
+#         # but shifted one token to the right.
+#
+#         # TODO: It is a arbitrary design choice whether to do the shift of the labels here
+#         # todo split by user?
+#         # or in the loss function. Huggingface's DataCollator is designed to let the loss
+#         # function do the shifting, so we need to change this if we want to be compatible with that.
+#         # start = i * self.seq_length
+#         # x = self.data[start: start + self.seq_length]
+#         # y = self.data[start + 1: start + self.seq_length + 1]
+#         # mask = self.label_mask[start: start + self.seq_length]
+#         # return {"input_ids": x, "targets": y, "mask": mask}
+#         x = self.data[i, :]
+#         mask = self.label_mask[i, :]
+#         if self.randomize_order:
+#             index = torch.arange(x.shape[0])
+#             for s in range(self.seq_length):
+#                 start = self.num_columns * s
+#                 index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
+#             x = x[index]
+#             mask = mask[index]
+#
+#         inds = (mask == 1).nonzero().flatten()
+#         if self.label_type == "any" and self.target_label_id >= 0:
+#             # todo this doesnt work
+#             y = x[inds] == self.target_label_id
+#         elif self.label_type == "last":
+#             y = inds[-1]
+#         else:  # self.loss_calc_mode == "labels:
+#             raise
+#         return {"input_ids": x, "labels": y}
 
 
 class MaskedLanguageModelingDataset(data.Dataset):
