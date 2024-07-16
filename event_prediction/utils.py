@@ -466,6 +466,7 @@ def collect_system_metrics(cfg, metrics, kWh_counter, setup):
     # Finalize some compute metrics:
     metrics["GPU"] = torch.cuda.get_device_name(device=setup["device"]) if torch.cuda.device_count() > 0 else ""
     metrics["numGPUs"] = torch.cuda.device_count()
+    metrics["hostname"] = socket.gethostname()
     metrics = collect_memory_usage(metrics, setup["device"])
     if torch.cuda.device_count() == 1:
         metrics["kWh"] = get_kWh(kWh_counter, setup)

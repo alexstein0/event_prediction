@@ -580,7 +580,9 @@ class ModelTrainerInterface:
             target_probs, target_inds = self.consolidate_column_values(consolidation_map, target_probs, target_inds)
 
         # assert (target_inds >= 0).all(), "all possible logits found"
-        assert target_probs.sum(dim=0).allclose(torch.tensor(1.0)), "all probs add to 1"
+        total_prob_is_one = target_probs.sum(dim=0).isclose(torch.tensor(1.0))
+
+        assert total_prob_is_one.all(), f"all probs add to 1, but instead add to {total_prob_is_one.sum()} / {len(total_prob_is_one)}"
         return target_probs, target_inds
 
     def consolidate_column_values(self, consolidation_map, logits, inds):
