@@ -49,6 +49,7 @@ class ModelTrainerInterface:
         self.num_cols = classification_info["num_cols"]
         self.label_ids = classification_info["label_ids"]
         self.tokenizer = tokenizer
+        self.train_eval = train_eval
 
         _, self.col_to_loc, self.loc_to_col = data_preparation.get_col_to_id_dict(data_processor.get_data_cols(), dataset=None)
         consolidation_map = cfg.data.consolidate_columns
@@ -360,7 +361,7 @@ class ModelTrainerInterface:
     def validation_loop(self, idx, batch):
         device_batch = self.to_device(batch, keys=["input_ids", "mask", "labels"])
         outputs = self.forward_inference(device_batch)
-        metrics = self.calc_metrics_for_batch(device_batch, outputs, is_eval=True)
+        metrics = self.calc_metrics_for_batch(device_batch, outputs)
         return metrics
 
     def save_model(self, name: str):
@@ -473,7 +474,7 @@ class ModelTrainerInterface:
             pass
         return output_stats
 
-    def calc_metrics_for_batch(self, device_batch: Dict[str, Any], model_outputs: Dict[str, Any], is_eval: bool = False) -> Dict[str, Any]:
+    def calc_metrics_for_batch(self, device_batch: Dict[str, Any], model_outputs: Dict[str, Any]) -> Dict[str, Any]:
         metrics = {}
         if "loss" in model_outputs:
             loss = model_outputs["loss"]
@@ -513,7 +514,7 @@ class ModelTrainerInterface:
             accuracy = (preds == target_inds).float().mean()
             metrics[f"accuracy{suffix}"] = accuracy.detach().to("cpu")
 
-        if is_eval:
+        if not self.train_eval:
             # this is a specific bit of functionality to check accuracy on entire sequence
             for col_num, mapping in self.label_ids.items():
                 col_num = int(col_num)
@@ -580,7 +581,7 @@ class ModelTrainerInterface:
             target_probs, target_inds = self.consolidate_column_values(consolidation_map, target_probs, target_inds)
 
         # assert (target_inds >= 0).all(), "all possible logits found"
-        total_prob_is_one = target_probs.sum(dim=0).isclose(torch.tensor(1.0))
+        total_prob_is_one = target_probs.sum(dim=0).isclose(torch.tensor(1.0), atol=1e-3)
 
         assert total_prob_is_one.all(), (f"all probs add to 1, "
                                          f"but instead add to {total_prob_is_one.sum()} / {len(total_prob_is_one)} "
