@@ -41,5 +41,6 @@ epoch_to_switch: -1
 loss_calc_mode: all # last, labels
 metric_calc_mode: labels # last
 track_preds: False
+evaluate_all_positions: False
 
 #stream_depth: ${data.seq_length} # full sequence as input to model

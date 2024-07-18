@@ -50,6 +50,7 @@ class ModelTrainerInterface:
         self.label_ids = classification_info["label_ids"]
         self.tokenizer = tokenizer
         self.train_eval = train_eval
+        self.evaluate_all_positions = cfg.evaluate_all_positions
 
         _, self.col_to_loc, self.loc_to_col = data_preparation.get_col_to_id_dict(data_processor.get_data_cols(), dataset=None)
         consolidation_map = cfg.data.consolidate_columns
@@ -514,7 +515,7 @@ class ModelTrainerInterface:
             accuracy = (preds == target_inds).float().mean()
             metrics[f"accuracy{suffix}"] = accuracy.detach().to("cpu")
 
-        if not self.train_eval:
+        if not self.train_eval and self.evaluate_all_positions:
             # this is a specific bit of functionality to check accuracy on entire sequence
             for col_num, mapping in self.label_ids.items():
                 col_num = int(col_num)
