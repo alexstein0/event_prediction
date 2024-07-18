@@ -50,7 +50,7 @@ class ModelTrainerInterface:
         self.label_ids = classification_info["label_ids"]
         self.tokenizer = tokenizer
         self.train_eval = train_eval
-        self.evaluate_all_positions = cfg.evaluate_all_positions
+        self.evaluate_all_positions = cfg.model.evaluate_all_positions
 
         _, self.col_to_loc, self.loc_to_col = data_preparation.get_col_to_id_dict(data_processor.get_data_cols(), dataset=None)
         consolidation_map = cfg.data.consolidate_columns
