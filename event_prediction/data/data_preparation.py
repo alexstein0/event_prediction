@@ -149,7 +149,8 @@ def get_dataset_and_collator(tokenized_dataset: Dataset, tokenizer, cfg: DictCon
                                                        eos_id=tokenizer.eos_token_id,
                                                        randomize_order=cfg.model.randomize_order,
                                                        fixed_cols=cfg.model.fixed_cols,
-                                                       label_position=cfg.data.label_position
+                                                       label_position=cfg.data.label_position,
+                                                       label_moved_to_position=cfg.data.label_moved_to_position
                                                        )
         collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer, pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
 
@@ -403,7 +404,8 @@ class TabularDataset(data.Dataset):
                  fixed_cols: int = 1,
                  bos_id: int = 0,
                  eos_id: int = 0,
-                 label_position: int = -1
+                 label_position: int = -1,
+                 label_moved_to_position: int = -1,
                  ):
         assert pad_id is not None
         self.pad_id = pad_id
@@ -419,6 +421,11 @@ class TabularDataset(data.Dataset):
             self.label_col_position = self.num_columns - 2  # where the label is within a row (new row token is last)
         else:
             self.label_col_position = label_position  # where the label is within a row (new row token is last)
+
+        if label_moved_to_position < 0 or label_moved_to_position > self.num_columns - 1:
+            self.label_moved_to_position = -1
+        else:
+            self.label_moved_to_position = label_moved_to_position
         self.data, self.label_mask = self.prepare_data(self.user_ids, tokenized_dataset)
         # todo we dont need to keep the labels, but we can just keep track of the randomized mapping and can get label during eval time
         self.epoch = 0
@@ -488,7 +495,16 @@ class NextTokenPredictionDataset(TabularDataset):
             index = torch.arange(x.shape[0])
             for s in range(self.seq_length):
                 start = self.num_columns * s
-                index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
+                if self.label_moved_to_position < 0:
+                    perm = torch.randperm(self.num_columns - self.fixed_cols)
+                else:
+                    perm = (torch.zeros(self.num_columns - self.fixed_cols) - 1).long()
+                    perm_temp = torch.randperm(self.num_columns - self.fixed_cols - 1)
+                    perm_temp[perm_temp >= self.label_col_position] = perm_temp[perm_temp >= self.label_col_position] + 1
+                    perm[self.label_moved_to_position] = self.label_col_position
+                    perm[perm < 0] = perm_temp
+
+                index[start:start + self.num_columns - self.fixed_cols] = perm + start
             x = x[index]
             mask = mask[index]
 

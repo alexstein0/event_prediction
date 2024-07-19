@@ -25,3 +25,5 @@ raw_index_columns: ${data.index_columns}
 consolidate_columns:
 
 label_position: -1
+
+label_moved_to_position: -1
