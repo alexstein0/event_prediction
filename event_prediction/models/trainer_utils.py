@@ -86,6 +86,11 @@ class ModelTrainerInterface:
         except:
             log.info("No label column position provided!")
             self.label_col_position = self.num_cols - 1
+        try:
+            self.label_moved_to_position = self.valid_loader.dataset.label_moved_to_position
+        except:
+            log.info("No label column position provided!")
+            self.label_moved_to_position = self.num_cols - 1
 
         self.epochs = cfg.model.epochs
         self.model_context_length = self.num_cols*cfg.model.seq_length
@@ -197,6 +202,8 @@ class ModelTrainerInterface:
         self.static_info["seq_length"] = self.cfg.model.seq_length
         self.static_info["seed"] = self.cfg.seed
         self.static_info["label_column"] = self.loc_to_col.get(self.label_col_position)
+        self.static_info["label_column_position"] = self.label_col_position
+        self.static_info["label_moved_to_position"] = self.label_moved_to_position
         self.static_info["randomize_order"] = self.cfg.model.randomize_order
         self.static_info["mask_all_pct"] = self.cfg.model.percent_mask_all_labels_in_input
         self.static_info["mask_each_pct"] = self.cfg.model.percent_mask_labels_in_input
