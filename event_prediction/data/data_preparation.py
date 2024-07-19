@@ -436,8 +436,8 @@ class TabularDataset(data.Dataset):
             # user_rows = torch.tensor(user_rows["input_ids"], dtype=torch.long)
             user_rows = torch.tensor(tokenized_dataset[uid]["input_ids"], dtype=torch.long)
             num_rows = user_rows.shape[0]
-            if num_rows < self.seq_length:  # not enough transactions for the user to fill up the seq_len window
-                continue
+            # if num_rows < self.seq_length:  # not enough transactions for the user to fill up the seq_len window
+            #     continue
             total_transactions += (num_rows // self.seq_length) + int((num_rows % self.seq_length) > 0)  # sanity check
             index = torch.arange(self.num_columns).unsqueeze(0).repeat(num_rows, 1)
 
