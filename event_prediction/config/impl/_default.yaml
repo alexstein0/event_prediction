@@ -50,6 +50,6 @@ local_rank: # This is set automatically by the system_startup
 
 save_final_model: False
 push_to_huggingface_hub: False
-hf_directoy_name: "test-crammedBERT-c5" # set a clever name here!
+#hf_directoy_name: "test-crammedBERT-c5" # set a clever name here!
 
 add_env_variables:
