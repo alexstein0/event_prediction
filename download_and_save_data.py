@@ -19,6 +19,7 @@ def download_data(cfg, setup=None) -> Dict:
     log.info(dataset.loc[0])
     return {}
 
+
 @hydra.main(
     config_path="event_prediction/config",
     config_name="pre_process_data",

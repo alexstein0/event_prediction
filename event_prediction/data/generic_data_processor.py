@@ -10,21 +10,28 @@ class GenericDataProcessor:
         self._categorical_columns = list(data_cfg.categorical_columns)
         self._numeric_columns = list(data_cfg.numeric_columns)
         self._binary_columns = list(data_cfg.binary_columns)
-        self._static_numeric_columns = list(data_cfg.static_numeric_columns) if data_cfg.static_numeric_columns is not None else [] # prob dont need if statement
+        # self._static_numeric_columns = list(data_cfg.static_numeric_columns) if data_cfg.static_numeric_columns is not None else [] # prob dont need if statement
         self._label_columns = list(data_cfg.label_columns)
+        self._raw_columns = list(data_cfg.raw_selected_columns)
 
         all_cols = []
         all_cols.extend(self._index_columns)
         all_cols.extend(self._categorical_columns)
         all_cols.extend(self._numeric_columns)
         all_cols.extend(self._binary_columns)
-        all_cols.extend([static_col["name"] for static_col in self._static_numeric_columns])
+        # all_cols.extend([static_col["name"] for static_col in self._static_numeric_columns])
         all_cols.extend(self._label_columns)
         self._all_cols = []
         [self._all_cols.append(x) for x in all_cols if x not in self._all_cols]
 
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         raise NotImplementedError()
+
+    def select_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        # only keep used columns and indexes
+        cols = self.get_data_cols() + [x for x in self.get_index_columns() if x not in self.get_data_cols()]
+        data = data[cols]
+        return data
 
     def arrange_columns(self, data: pd.DataFrame, sort_col: str = None) -> pd.DataFrame:
         sort_columns = self.get_index_columns().copy()
@@ -51,6 +58,9 @@ class GenericDataProcessor:
             data[col_name] = remove_spaces(data[col_name])
         return data
 
+    def get_raw_columns(self) -> List[str]:
+        return self._raw_columns
+
     def get_all_cols(self):
         return self._all_cols
 
@@ -74,7 +84,7 @@ class GenericDataProcessor:
         return self._numeric_columns
 
     def get_static_numeric_columns(self):
-        return self._static_numeric_columns
+        return []
 
     def get_categorical_columns(self):
         return self._categorical_columns

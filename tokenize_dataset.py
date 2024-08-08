@@ -1,6 +1,6 @@
 import hydra
 import event_prediction
-from event_prediction import get_data_processor, data_preparation
+from event_prediction import get_data_processor, data_preparation, data_utils
 import logging
 from typing import Dict
 import os
@@ -22,7 +22,8 @@ def tokenize_dataset(cfg, setup=None) -> Dict:
 
     log.info(f"GET DATA")
     data_processor = get_data_processor(cfg.data)
-    tokenized_data, col_to_id_dict = data_preparation.get_data_and_tokenize(cfg, data_processor, tokenizer)
+    dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir)
+    tokenized_data, col_to_id_dict = data_preparation.process_data_and_tokenize(dataset, cfg, data_processor, tokenizer)
     # tokenized_data = data_preparation.split_data_by_column(tokenized_data, "User")
     log.info(f"DATASET SPLIT")
 

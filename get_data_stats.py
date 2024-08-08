@@ -14,7 +14,7 @@ import multiprocessing
 log = logging.getLogger(__name__)
 
 def main_process_data(cfg, setup=None) -> Dict:
-    dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir, cfg.save_tar, cfg.save_csv)
+    dataset = data_utils.get_data_from_raw(cfg.data, cfg.data_dir)
 
     log.info("DATA INFO BEFORE PROCESSING")
     log.info(f"Rows: {len(dataset)}, Cols: {len(dataset.columns)}")
@@ -23,6 +23,8 @@ def main_process_data(cfg, setup=None) -> Dict:
 
     data_processor = get_data_processor(cfg.data)
 
+    if len(data_processor.get_raw_columns()) > 0:
+        dataset = dataset[data_processor.get_raw_columns()]
     dataset = data_processor.normalize_data(dataset)
     for col in data_processor.get_numeric_columns():
         dataset[col], buckets = data_utils.convert_to_binary_string(dataset[col], cfg.tokenizer.numeric_bucket_amount)

@@ -31,10 +31,7 @@ class AmazonDataProcessor(GenericDataProcessor):
         # clean up columns
         data = self.clean_columns(data)
 
-        # only keep used columns and indexes
-        cols = self.get_data_cols() + [x for x in self.get_index_columns() if x not in self.get_data_cols()]
-        data = data[cols]
-
+        data = self.select_data(data)
         return data
 
 

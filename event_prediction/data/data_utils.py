@@ -94,7 +94,11 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
     """
     data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
     csv_file = os.path.join(data_dir, f"{cfg.name}.csv")
-    if os.path.exists(csv_file):
+    if cfg.huggingface is not None:
+        ds_name = cfg.huggingface.name
+        splits = cfg.huggingface.splits
+        return pd.read_csv(f"hf://datasets/{ds_name}/{splits[0]}.csv.gz")
+    elif os.path.exists(csv_file):
         df = pd.read_csv(csv_file)
         log.info(f"Read CSV from {csv_file}")
     elif os.path.isdir(os.path.join(data_dir, cfg.name)):  # folder of files

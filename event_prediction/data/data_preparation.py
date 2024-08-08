@@ -174,7 +174,20 @@ def prepare_validation_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) ->
     return loader
 
 
+def prepare_text_dataloader(tokenized_dataset: Dataset, tokenizer, cfg) -> data.DataLoader:
+    tokenized_dataset = TextTabularDataset(tokenized_dataset=tokenized_dataset,
+                                           seq_length=cfg.model.seq_length,
+                                           )
+    collate_fn = TransDataCollatorForLanguageModeling(tokenizer=tokenizer,
+                                                      pad_to_multiple_of=cfg.impl.pad_to_multiple_of, mlm=False)
+
+    loader = to_val_dataloader(tokenized_dataset, collate_fn, cfg.model.batch_size)
+    return loader
+
+
 def preprocess_dataset(dataset: pd.DataFrame, data_processor, numeric_bucket_amount: int = 5) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    if len(data_processor.get_raw_columns()) > 0:
+        dataset = dataset[data_processor.get_raw_columns()]
     dataset = data_processor.normalize_data(dataset)
     data_processor.summarize_dataset(dataset, numeric_bucket_amount)
     for col in data_processor.get_numeric_columns():
@@ -191,15 +204,16 @@ def preprocess_dataset(dataset: pd.DataFrame, data_processor, numeric_bucket_amo
     return dataset, col_to_id_dict
 
 
-def get_col_to_id_dict(all_cols: List[str], dataset: pd.DataFrame = None):
+def get_col_to_id_dict(all_cols: List[str], dataset: pd.DataFrame = None, use_name: bool = False) -> Dict[str, int]:
     col_id = 0
     col_to_id_dict = {}
     id_to_col_dict = {}
     for col in all_cols:
+        name_prefix = col + ":" if use_name else str(col_id) + "_"
         col_to_id_dict[col] = col_id
         id_to_col_dict[col_id] = col
         if dataset is not None:
-            dataset[col] = str(col_id) + "_" + dataset[col].astype(str)
+            dataset[col] = name_prefix + dataset[col].astype(str)
         col_id += 1
 
     return dataset, col_to_id_dict, id_to_col_dict
@@ -215,6 +229,26 @@ def convert_to_huggingface(dataset: pd.DataFrame, data_processor) -> datasets.Da
         new_ex = {}
         # print([example[x] for x in example.keys() if x not in data_processor.get_index_columns()])
         row = " ".join([example[x] for x in example.keys() if x not in data_processor.get_index_columns()])
+        # todo add this to post process instead?
+        row = row + f" {row_token}"
+        new_ex["text"] = row
+        return new_ex
+
+    dataset = dataset.map(concat_columns, num_proc=threads)
+    dataset = dataset.select_columns(["text", *data_processor.get_index_columns()])
+    return dataset
+
+
+def convert_to_huggingface_text(dataset: pd.DataFrame, data_processor) -> datasets.Dataset:
+    row_token = "[ROW]"
+    columns = dataset.columns
+    dataset = Dataset.from_pandas(dataset, preserve_index=False)
+
+    # dataset = dataset.map(lambda example: example, batched=True)
+    def concat_columns(example):
+        new_ex = {}
+        # print([example[x] for x in example.keys() if x not in data_processor.get_index_columns()])
+        row = " ".join([str("".join(example[x].split())) for x in example.keys() if x not in data_processor.get_index_columns()])
         # todo add this to post process instead?
         row = row + f" {row_token}"
         new_ex["text"] = row
@@ -342,8 +376,7 @@ def tokenize_data(data: Dataset, tokenizer: AutoTokenizer, test_split: float = .
     return data
 
 
-def get_data_and_tokenize(cfg, data_processor, tokenizer):
-    dataset = get_data_from_raw(cfg.data, cfg.data_dir)
+def process_data_and_tokenize(dataset, cfg, data_processor, tokenizer):
     dataset, col_to_id_dict = preprocess_dataset(dataset, data_processor, cfg.tokenizer.numeric_bucket_amount)
     # dataset[["reviewerID", "unixReviewTime", "asin", "verified", "overall"]].to_csv("/Users/alex/Documents/School/Maryland/Research/event_prediction/data/submit/raw")
     dataset = convert_to_huggingface(dataset, data_processor)
@@ -361,6 +394,19 @@ def get_data_and_tokenize(cfg, data_processor, tokenizer):
     # with open(path, 'w', newline='') as f:
     #     writer = csv.writer(f)
     #     writer.writerows(a)
+
+
+def get_data_and_dont_tokenize(cfg, data_processor):
+    dataset = get_data_from_raw(cfg.data, cfg.data_dir)
+    # dataset = dataset[data_processor.get_raw_columns()]
+    if len(data_processor.get_raw_columns()) > 0:
+        dataset = dataset[data_processor.get_raw_columns()]
+    dataset = data_processor.normalize_data(dataset)
+
+    all_cols = data_processor.get_data_cols()
+    dataset, col_to_id_dict, _ = get_col_to_id_dict(all_cols, dataset, use_name=True)
+    dataset = convert_to_huggingface_text(dataset, data_processor)
+    return dataset
 
 
 def save_dataset(dataset: Dataset, path: str):
@@ -518,48 +564,54 @@ class NextTokenPredictionDataset(TabularDataset):
         return {"input_ids": x_out, "mask": mask_out}
 
 
-# class SequenceClassifierDataset(TabularDataset):
-#     # todo doesnt work
-#     def __init__(self,
-#                  label_type: str = 'last',  # or 'any'
-#                  target_label_id: int = -1,
-#                  **kwargs):
-#         super().__init__(**kwargs)
-#         self.label_type = label_type
-#         self.target_label_id = target_label_id
-#
-#     def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
-#         # The corresponding label for each example is a chunk of tokens of the same size,
-#         # but shifted one token to the right.
-#
-#         # TODO: It is a arbitrary design choice whether to do the shift of the labels here
-#         # todo split by user?
-#         # or in the loss function. Huggingface's DataCollator is designed to let the loss
-#         # function do the shifting, so we need to change this if we want to be compatible with that.
-#         # start = i * self.seq_length
-#         # x = self.data[start: start + self.seq_length]
-#         # y = self.data[start + 1: start + self.seq_length + 1]
-#         # mask = self.label_mask[start: start + self.seq_length]
-#         # return {"input_ids": x, "targets": y, "mask": mask}
-#         x = self.data[i, :]
-#         mask = self.label_mask[i, :]
-#         if self.randomize_order:
-#             index = torch.arange(x.shape[0])
-#             for s in range(self.seq_length):
-#                 start = self.num_columns * s
-#                 index[start:start + self.num_columns - self.fixed_cols] = torch.randperm(self.num_columns - self.fixed_cols) + start
-#             x = x[index]
-#             mask = mask[index]
-#
-#         inds = (mask == 1).nonzero().flatten()
-#         if self.label_type == "any" and self.target_label_id >= 0:
-#             # todo this doesnt work
-#             y = x[inds] == self.target_label_id
-#         elif self.label_type == "last":
-#             y = inds[-1]
-#         else:  # self.loss_calc_mode == "labels:
-#             raise
-#         return {"input_ids": x, "labels": y}
+class TextTabularDataset(data.Dataset):
+    def __init__(self,
+                 tokenized_dataset: Dataset,
+                 seq_length: int,
+                 ):
+        self.seq_length = seq_length  # number of ROWS in a sequence
+        self.num_rows = sum([x for x in tokenized_dataset.num_rows.values()])
+        self.user_ids = list(set(tokenized_dataset.keys()))  # needs to be split by user already
+        self.num_columns = -1
+        self.randomize_order = False
+        self.data = self.prepare_data(self.user_ids, tokenized_dataset)
+        # todo we dont need to keep the labels, but we can just keep track of the randomized mapping and can get label during eval time
+        self.epoch = 0
+
+    def __len__(self) -> int:
+        return self.num_rows // self.seq_length  # consider end row
+
+    def prepare_data(self, user_ids: List[str], tokenized_dataset: Dataset | DatasetDict):
+        def concatenate_text(user_ds) -> List[str]:
+            # user_rows = tokenized_dataset[uid]["text"]
+            sequences = []
+            user_rows = user_ds["text"]
+            num_rows = len(user_rows)
+            for starting_row_id in range(0, num_rows, self.seq_length):  # consider not striding by seq_len
+                seq = user_rows[starting_row_id: starting_row_id + self.seq_length]
+                seq = " ".join(seq)
+                sequences.append(seq)
+            return sequences
+
+        all_sequences = []
+        for uid in user_ids:
+            user_info = tokenized_dataset[uid]
+            # rows = user_info.map(lambda examples: concatenate_text(examples), batched=True, batch_size=len(user_info))
+            rows = concatenate_text(user_info)
+            all_sequences.extend(rows)
+
+        output_dataset = Dataset.from_dict({'text': all_sequences})
+
+        # note that with this implementation can have multiple users in same batch but NOT in same sequence (obviously)
+        return output_dataset
+
+    def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
+        raise NotImplementedError
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+
 
 
 class MaskedLanguageModelingDataset(data.Dataset):

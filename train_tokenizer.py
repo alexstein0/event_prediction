@@ -17,7 +17,6 @@ log = logging.getLogger(__name__)
 def main_process_data(cfg, setup=None) -> Dict:
     log.info(f"------------- STARTING TOKENIZER TRAINING -------------")
     initial_time = time.time()
-    metrics = {}
 
     log.info(f"------------- GET DATA -------------")
     section_timer = time.time()

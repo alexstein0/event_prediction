@@ -10,6 +10,13 @@ url: https://jmcauley.ucsd.edu/data/amazon_v2/categoryFilesSmall/Electronics_5.j
 
 data_processor: amazon
 
+raw_selected_columns:
+  - asin
+  - overall
+  - unixReviewTime
+  - verified
+  - reviewerID
+
 index_columns:
   - User
 

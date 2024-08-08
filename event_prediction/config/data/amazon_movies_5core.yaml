@@ -10,6 +10,13 @@ url: https://jmcauley.ucsd.edu/data/amazon_v2/categoryFilesSmall/Movies_and_TV_5
 
 data_processor: amazon
 
+raw_selected_columns:
+  - asin
+  - overall
+  - unixReviewTime
+  - verified
+  - reviewerID
+
 index_columns:
   - User
 

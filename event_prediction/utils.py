@@ -516,7 +516,7 @@ def get_cpus() -> int:
     except:
         pass
     try:
-        return os.cpu_count()  # when running on mac
+        return 1 #os.cpu_count()  # when running on mac
     except:
         return 1
 

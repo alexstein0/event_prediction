@@ -34,6 +34,7 @@ class IbmFraudTransactionDataProcessor(GenericDataProcessor):
         data = self.clean_columns(data)
 
         # only keep used columns
-        data = data[self.get_all_cols()]
+        # data = data[self.get_all_cols()]
+        data = self.select_data(data)
 
         return data
