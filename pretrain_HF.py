@@ -54,8 +54,8 @@ def main_pretrain(cfg, setup=None) -> Dict:
     # metrics["train_users"] = train_users
     # metrics["val_users"] = val_users
 
-    log.info(f"Num train users: {len(set(train_users))}, Num train loader batches: {len(train_loader)}")
-    log.info(f"Num val users: {len(set(val_users))}, Num val loader batches: {len(val_loader)}")
+    log.info(f"Num train users: {len(set(train_users))}, batches: {len(train_loader)}, rows: {train_loader.dataset.num_rows}, sequences: {train_loader.dataset.data.size(0)}")
+    log.info(f"Num val users: {len(set(val_users))}, batches: {len(val_loader)} rows: {val_loader.dataset.num_rows}, sequences: {val_loader.dataset.data.size(0)}")
     log.info(f"Number of Columns: {train_loader.dataset.num_columns}")
     log.info(f"Columns: {get_data_processor(cfg.data).get_data_cols()}")
     log.info(f"Ordered: {'true' if not cfg.model.randomize_order else 'random'}")
