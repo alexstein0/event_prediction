@@ -9,14 +9,13 @@ class CzechLoanDataProcessor(GenericDataProcessor):
 
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Return a normalized dataframe"""
-        # data["User"] = data["cl_id"]
-        data = data.rename(columns={"cl_id": "User"})
+        data = data.rename(columns={"account_id": "User"})
 
         # convert to right datatype
         data = self.convert_columns_to_types(data)
 
         # add missing columns
-        data = add_hours_total_minutes(data, pd.to_datetime(data["TRDATETIME"], format='%d%b%y:%H:%M:%S'))
+        data = add_hours_total_minutes(data, pd.to_datetime(data["event_time"], unit='s'))
 
         # sort
         data = self.arrange_columns(data, "total_minutes")

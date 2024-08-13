@@ -35,9 +35,10 @@ categorical_columns:
   - bank
 
 numeric_columns:
-  - event_time
+#  - event_time
   - amount
   - balance
+  - total_minutes_from_last
 
 binary_columns:
   - labels
