@@ -3,9 +3,9 @@ import pandas as pd
 from .data_utils import add_hours_total_minutes, get_timestamps_from_str, add_minutes_from_last
 
 
-class ChurnDataProcessor(GenericDataProcessor):
+class CzechLoanDataProcessor(GenericDataProcessor):
     def __init__(self, data_cfg):
-        super(ChurnDataProcessor, self).__init__(data_cfg)
+        super(CzechLoanDataProcessor, self).__init__(data_cfg)
 
     def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Return a normalized dataframe"""
