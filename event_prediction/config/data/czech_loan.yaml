@@ -4,7 +4,7 @@ defaults:
 
 size: "" #"_small"
 
-name: czech_loan{data.size}
+name: czech_loan${data.size}
 
 url: #"http://sorry.vse.cz/~berka/challenge/pkdd1999/data_berka.zip"
 # need to preprocess file by combining 2
