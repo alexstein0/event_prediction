@@ -28,7 +28,7 @@ raw_selected_columns:
   - loan_time
 
 index_columns:
-  - account_id
+  - User
 
 categorical_columns:
   - type
