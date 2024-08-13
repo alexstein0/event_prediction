@@ -105,13 +105,13 @@ def get_data_from_raw(cfg, raw_data_dir_name="data_raw") -> pd.DataFrame:
         splits = cfg.huggingface.splits
         return pd.read_csv(f"hf://datasets/{ds_name}/{splits[0]}.csv.gz")
     elif os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
+        df = pd.read_csv(csv_file, delimiter=cfg.delimiter)
         log.info(f"Read CSV from {csv_file}")
     elif os.path.isdir(os.path.join(data_dir, cfg.name)):  # folder of files
         dir = os.path.join(data_dir, cfg.name)
         df_list = []
         for csv_file in os.listdir(dir):
-            df_list.append(pd.read_csv(os.path.join(dir, csv_file)))
+            df_list.append(pd.read_csv(os.path.join(dir, csv_file), delimiter=cfg.delimiter))
         df = pd.concat(df_list, ignore_index=True)
     else:
         _, ext = os.path.splitext(urlparse(cfg.url).path)

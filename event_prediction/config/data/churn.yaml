@@ -8,6 +8,8 @@ name: churn${data.size}
 
 url:
 
+delimiter: ";"
+
 data_processor: churn
 
 raw_selected_columns:
