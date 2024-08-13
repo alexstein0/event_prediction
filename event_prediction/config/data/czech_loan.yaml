@@ -6,7 +6,7 @@ size: "" #"_small"
 
 name: czech_loan${data.size}
 
-url: #"http://sorry.vse.cz/~berka/challenge/pkdd1999/data_berka.zip"
+url: "http://sorry.vse.cz/~berka/challenge/pkdd1999/data_berka.zip"
 # need to preprocess file by combining 2
 
 data_processor: czech_loan
@@ -40,8 +40,8 @@ numeric_columns:
   - balance
   - total_minutes_from_last
 
-binary_columns:
-  - labels
+binary_columns: []
+#  - labels
 
 label_columns:
   - labels
