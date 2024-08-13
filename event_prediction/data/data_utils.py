@@ -17,6 +17,7 @@ from torch.utils import data
 from tqdm import tqdm
 from datasets import Dataset, load_dataset
 from event_prediction import utils
+import zipfile
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,10 @@ def bytes_to_df(data_bytes, cfg, raw_data_dir_name="data_raw", save_tar_to_disk=
             df = pd.DataFrame.from_records(output)
         else:
             raise ValueError
+    elif ext == ".zip":
+        with zipfile.ZipFile(data_bytes, 'r') as z:
+            with z.open('trans.asc') as csvfile:
+                df = pd.read_csv(csvfile, delimiter=";")  # might not be this delimited
     else:
         df = pd.read_csv(data_bytes)
     return df
@@ -78,7 +83,8 @@ def download_and_save_data(cfg, raw_data_dir_name="data_raw", save_tar_to_disk=F
         df = get_data_from_raw(cfg)  # already locally in raw folder just needs processing
     if save_csv_to_disk:
         data_dir = os.path.join(get_original_cwd(), raw_data_dir_name)
-        df.sort_values(list(cfg.raw_index_columns), inplace=True)
+        if len(list(cfg.raw_index_columns)) > 0:
+            df.sort_values(list(cfg.raw_index_columns), inplace=True)
         os.makedirs(data_dir, exist_ok=True)
         filepath = os.path.join(data_dir, f"{cfg.name}.csv")
         df.to_csv(filepath, index=False)
