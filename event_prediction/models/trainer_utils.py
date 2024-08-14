@@ -112,7 +112,7 @@ class ModelTrainerInterface:
         if cfg.model_save_name is not None:
             self.model_save_name = cfg.model_save_name
         else:
-            self.model_save_name = f"{cfg.name}-{timestamp}"
+            self.model_save_name = f"{cfg.name}-{cfg.seed}-{timestamp}"
         self.checkpoint_save_name = cfg.checkpoint_save_name
         log.info(f"Save name: {self.model_save_name}")
         which_checkpoints = cfg.impl.which_checkpoints
