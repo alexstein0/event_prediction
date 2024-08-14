@@ -200,6 +200,7 @@ class ModelTrainerInterface:
         self.static_info["lr"] = self.cfg.model.lr
         self.static_info["batch_size"] = self.cfg.model.batch_size
         self.static_info["seq_length"] = self.cfg.model.seq_length
+        self.static_info["epochs"] = self.epochs
         self.static_info["seed"] = self.cfg.seed
         self.static_info["label_column"] = self.loc_to_col.get(self.label_col_position)
         self.static_info["label_column_position"] = self.label_col_position
