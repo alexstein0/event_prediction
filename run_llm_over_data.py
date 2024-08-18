@@ -13,6 +13,10 @@ log = logging.getLogger(__name__)
 torch.manual_seed(0)
 
 
+def remove_label(prev_seq: str, question: str):
+    return " ".join([x for x in prev_seq.split() if not x.startswith(question)])
+
+
 def extract_answer(seq: str):
     splitted = seq.split()
     prev_seq = " ".join(splitted[0:-2])
@@ -23,7 +27,7 @@ def extract_answer(seq: str):
 def create_prompts(question, prev_seq):
     system_prompt = "You are a helpful AI assistant that is good at analyzing sequential tabular data.  \
 The user will give you tabular data in the form '<column name>:<value>' with '[ROW]' indicating the end of a row.  \
-You will be given the next column name and are tasks with predicting the corresponding value. \
+You will be given the next column name and are tasked with predicting the corresponding value. \
 Please only respond with the next value. "
 
     user_prompt = f"{prev_seq}"
@@ -123,9 +127,11 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    target_tokens = [2575, 4139]
+    # target_tokens = [2575, 4139]
     # [True, False]
     # target_tokens = [16, 17, 18, 19, 20]
+    # [0, 1]
+    target_tokens = [15, 16]
 
     for i in range(0, max_samples - batch_size, batch_size):
         if i % (batch_size * 100) == 0:
@@ -135,6 +141,10 @@ def main(args):
         for sample in batch:
             sample = sample["text"]
             prev_seq, question, answer = extract_answer(sample)
+            if args.exclude_labels:
+                prev_seq = remove_label(prev_seq, question)
+            if args.replace_question is not None:
+                question = args.replace_question
             system_prompt, user_prompt, assistent_response = create_prompts(question, prev_seq)
             messages = create_message(system_prompt, user_prompt, assistent_response)
             inputs = create_input_payload(messages, tokenizer, max_length=max_len)
@@ -168,5 +178,10 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', type=str, default='text_results2')
     parser.add_argument('--model_name', type=str, default='meta-llama/Meta-Llama-3-8B-Instruct')
     parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--exclude_labels', type=bool, default=False)
+    parser.add_argument('--replace_question', type=str)
     args_dict = parser.parse_args()
+    if args_dict.replace_question is not None:
+        args_dict.replace_question = " ".join(args_dict.replace_question.split("|"))
+    print(args_dict)
     main(args_dict)

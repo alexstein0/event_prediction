@@ -34,8 +34,9 @@ def create_text_dataset(cfg, setup=None) -> Dict:
     # log.info("Column keys: " + " ".join([f"{k}: {v}" for k, v in col_to_id_dict.items()]))
 
     tokenized_data = data_preparation.split_data_by_column(data, "User")
-    tokenized_data = data_preparation.create_train_test_split(tokenized_data, cfg.model.train_test_split)
-    tokenized_data = tokenized_data["test"]
+    if cfg.data.split is not None:
+        tokenized_data = data_preparation.create_train_test_split(tokenized_data, cfg.model.train_test_split)
+        tokenized_data = tokenized_data[cfg.data.split]
     log.info(f"Data has {sum([len(x) for user, x in tokenized_data.items()])} samples")
     log.info("SPLITTTED DATA BY USER AND TEST SPLIT")
     seq_length = cfg.model.seq_length
